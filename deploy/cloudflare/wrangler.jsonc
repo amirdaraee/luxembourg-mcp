@@ -7,7 +7,7 @@
       "class_name": "LuxembourgMcp",
       "image": "../../Dockerfile",
       "instance_type": "basic",
-      "max_instances": 2
+      "max_instances": 4
     }
   ],
   "durable_objects": {
