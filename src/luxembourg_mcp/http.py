@@ -57,7 +57,7 @@ class HttpClient:
             validate_external_url(url, allowed_hosts)
         request_headers = {
             "Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
-            "User-Agent": "luxembourg-mcp/0.3",
+            "User-Agent": "luxembourg-mcp/0.4",
         }
         request_headers.update(headers or {})
         request = Request(

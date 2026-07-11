@@ -40,8 +40,102 @@ VDL_MOBILITY_LAYERS = {
 }
 CITA_ROADS = {"a3", "a4", "a6", "a7", "a13", "b40"}
 DATA_PUBLIC_RESOURCE_HOSTS = frozenset({"download.data.public.lu"})
+WEATHER_OBS_SLUG = "hvd-annex-3-meteorological-live-weather-observations-at-luxembourg-airport-ellx"
+HOLIDAYS_SLUG = "jours-feries-legaux-au-luxembourg"
+QUESTIONS_SLUG = "liste-des-questions-parlementaires"
+HOUSING_SLUG = "prix-annonces-des-logements-par-commune"
+ELECTIONS_SLUG = "elections-legislatives-2023-donnees-officieuses"
+CHARGY_SLUG = "bornes-de-chargement-publiques-pour-voitures-electriques"
+# The Chargy dataset's resource URL lives on my.chargy.lu and carries a key that
+# Chargy itself publishes openly in the national catalog, so no user key is needed.
+CHARGY_RESOURCE_HOSTS = DATA_PUBLIC_RESOURCE_HOSTS | {"my.chargy.lu"}
+METEOLUX_SENSOR_LABELS = {
+    "st": "air temperature (°C)",
+    "std": "dew point temperature (°C)",
+    "stw": "wet-bulb temperature (°C)",
+    "stags": "grass temperature (°C)",
+    "su": "relative humidity (%)",
+    "svp": "vapour pressure (hPa)",
+    "spsl": "sea-level pressure (hPa)",
+    "sqnh": "QNH pressure (hPa)",
+    "sqfe": "QFE pressure (hPa)",
+    "srr": "precipitation rate",
+    "svv": "visibility",
+}
+METEOLUX_SENSOR_PREFIXES = {
+    "s2ffgust": "wind gust speed",
+    "s2ddgust": "wind gust direction (degrees)",
+    "s2ff": "wind speed",
+    "s2dd": "wind direction (degrees)",
+    "svv": "visibility",
+    "sh": "cloud base height",
+}
+METEOLUX_RUNWAYS = {"rwy060": "runway 06", "rwy240": "runway 24", "rwymd0": "mid-runway"}
 MAX_GTFS_MEMBER_BYTES = 10 * 1024 * 1024
 MAX_ZIP_COMPRESSION_RATIO = 100
+
+
+def _meteolux_label(sensor_id: str) -> str | None:
+    if sensor_id in METEOLUX_SENSOR_LABELS:
+        return METEOLUX_SENSOR_LABELS[sensor_id]
+    base, _, suffix = sensor_id.partition("_")
+    label = METEOLUX_SENSOR_PREFIXES.get(base)
+    if label is None:
+        return None
+    runway = METEOLUX_RUNWAYS.get(suffix)
+    return f"{label}, {runway}" if runway else label
+
+
+_XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_XLSX_RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+
+
+def _xlsx_sheet_rows(payload: bytes, sheet_name: str | None) -> tuple[str, list[str], list[dict[str, str]]]:
+    """Minimal stdlib XLSX reader: returns (chosen sheet, all sheet names, rows as {column: value})."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            workbook = ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/workbook.xml"))
+            rels = {
+                rel.get("Id"): rel.get("Target")
+                for rel in ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/_rels/workbook.xml.rels"))
+            }
+            sheets = {s.get("name"): rels.get(s.get(_XLSX_RID)) for s in workbook.iter(f"{_XLSX_NS}sheet")}
+            names = [name for name in sheets if name]
+            chosen = sheet_name if sheet_name is not None else max(names)
+            if chosen not in sheets or not sheets[chosen]:
+                raise ValueError(f"sheet must be one of: {', '.join(names)}")
+            target = sheets[chosen]
+            path = target if target.startswith("xl/") else f"xl/{target.lstrip('/')}"
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                strings = ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/sharedStrings.xml"))
+                shared = ["".join(t.text or "" for t in si.iter(f"{_XLSX_NS}t")) for si in strings]
+            sheet = ElementTree.fromstring(_read_bounded_zip_member(archive, path))
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError) as exc:
+        raise UpstreamError("Upstream returned an invalid XLSX workbook") from exc
+    rows = []
+    for row in sheet.iter(f"{_XLSX_NS}row"):
+        cells: dict[str, str] = {}
+        for cell in row.iter(f"{_XLSX_NS}c"):
+            raw = cell.findtext(f"{_XLSX_NS}v")
+            if raw is None:
+                continue
+            if cell.get("t") == "s" and raw.isdigit() and int(raw) < len(shared):
+                value = shared[int(raw)]
+            else:
+                value = raw
+            column = re.match(r"[A-Z]+", cell.get("r") or "")
+            if column:
+                cells[column.group()] = value
+        if cells:
+            rows.append(cells)
+    return chosen, names, rows
+
+
+def _price_number(value: str | None) -> int | float | None:
+    if value is None or value.strip() in ("", "*"):
+        return None
+    return _number(value)
 
 
 def _fold(text: str) -> str:
@@ -465,6 +559,194 @@ class LuxembourgData:
         needle = _fold(query)
         matches = [stop for stop in stops if needle in _fold(" ".join(stop.values()))][: min(max(limit, 1), 100)]
         return {"count": len(matches), "stops": matches, "source": url, "dataset": dataset.get("page")}
+
+    def _dataset_resource(self, slug: str, *, format: str, title_keyword: str | None = None) -> tuple[dict, dict]:
+        dataset = self.get_dataset(slug)
+        resource = next(
+            (
+                item for item in dataset.get("resources", [])
+                if item.get("format") == format
+                and (title_keyword is None or title_keyword in _fold(item.get("title") or ""))
+                and item.get("url")
+            ),
+            None,
+        )
+        if resource is None:
+            raise UpstreamError(f"No current {format} resource was found in dataset {slug}")
+        return dataset, resource
+
+    def get_weather_observations(self) -> dict:
+        dataset, resource = self._dataset_resource(WEATHER_OBS_SLUG, format="json")
+        data = self.http.get_json_value(resource["url"], allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise UpstreamError("MeteoLux observations had an unexpected shape")
+        observations = [
+            {"id": item.get("id"), "label": _meteolux_label(str(item.get("id") or "")), "value": item.get("value")}
+            for item in data["data"]
+        ]
+        return {
+            "station": "Luxembourg-Airport (ELLX)",
+            "measured_at": data.get("timestamp"),
+            "count": len(observations),
+            "observations": observations,
+            "source": resource["url"],
+            "dataset": dataset.get("page"),
+        }
+
+    def get_public_holidays(self, year: int | None = None) -> dict:
+        dataset, resource = self._dataset_resource(HOLIDAYS_SLUG, format="json")
+        data = self.http.get_json_value(resource["url"], allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+        if not isinstance(data, list):
+            raise UpstreamError("Holiday list had an unexpected shape")
+        holidays = [item for item in data if year is None or item.get("year") == year]
+        return {"year": year, "count": len(holidays), "holidays": holidays,
+                "source": resource["url"], "dataset": dataset.get("page")}
+
+    def search_parliamentary_questions(self, query: str, limit: int = 10) -> dict:
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        limit = min(max(limit, 1), 50)
+        dataset, resource = self._dataset_resource(QUESTIONS_SLUG, format="csv")
+        url = resource["url"]
+
+        def load() -> list[dict[str, str]]:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            return self._decode_csv(payload)
+
+        rows = self._cached(f"chd-questions:{url}", 3600, load)
+        needle = _fold(query)
+        matches = [row for row in rows if needle in _fold(" ".join(str(value) for value in row.values() if value))]
+        matches.sort(key=lambda row: row.get("question_chd_entry_date") or "", reverse=True)
+        return {"count": len(matches[:limit]), "total_matches": len(matches),
+                "questions": matches[:limit], "source": url, "dataset": dataset.get("page")}
+
+    def get_housing_prices(self, property_type: str = "apartment", commune: str | None = None, year: str | None = None) -> dict:
+        if property_type not in {"apartment", "house"}:
+            raise ValueError("property_type must be apartment or house")
+        if year is not None and not re.fullmatch(r"20\d\d", year):
+            raise ValueError("year must look like 2025")
+        keyword = "appartements" if property_type == "apartment" else "maisons"
+        dataset, resource = self._dataset_resource(HOUSING_SLUG, format="xlsx", title_keyword=keyword)
+        url = resource["url"]
+
+        def load() -> bytes:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            return payload
+
+        payload = self._cached(f"housing:{url}", 3600, load)
+        chosen, years, raw_rows = _xlsx_sheet_rows(payload, year)
+        header_index = next(
+            (index for index, row in enumerate(raw_rows) if _fold(row.get("C", "")) == "commune"), None)
+        if header_index is None:
+            raise UpstreamError("Housing workbook had an unexpected layout")
+        rows = []
+        for row in raw_rows[header_index + 1:]:
+            name = row.get("C")
+            if not name:
+                continue
+            rows.append({
+                "commune": name,
+                "offers": _price_number(row.get("D")),
+                "average_price_eur": _price_number(row.get("E")),
+                "average_price_per_m2_eur": _price_number(row.get("F")),
+            })
+        if commune:
+            needle = _fold(commune)
+            rows = [row for row in rows if needle in _fold(row["commune"])]
+        return {"property_type": property_type, "year": chosen, "available_years": sorted(years),
+                "count": len(rows), "rows": rows,
+                "note": "Prices are masked (null) by the source for communes with under 30 listings.",
+                "source": url, "dataset": dataset.get("page")}
+
+    def get_election_results(self) -> dict:
+        dataset, resource = self._dataset_resource(ELECTIONS_SLUG, format="xml")
+        url = resource["url"]
+
+        def load() -> dict:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            try:
+                root = ElementTree.fromstring(payload)
+            except ElementTree.ParseError as exc:
+                raise UpstreamError("Election results were not valid XML") from exc
+
+            def lists_of(entity):
+                results = entity.find("{*}resultats")
+                if results is None:
+                    return []
+                out = []
+                for liste in results.findall(".//{*}liste"):
+                    out.append({
+                        "number": _number(liste.get("numero")),
+                        "party": liste.findtext("{*}noms/{*}nom"),
+                        "abbreviation": liste.findtext("{*}sigles/{*}sigle"),
+                        "votes": _number(liste.get("suffragesTotal")),
+                        "percentage": _number(liste.get("pourcentage")),
+                        "seats": _number(liste.get("mandatsAttribues")),
+                    })
+                return out
+
+            country = root.find("{*}entite[@type='PAYS']")
+            if country is None:
+                raise UpstreamError("Election results had an unexpected shape")
+            stats = country.find("{*}statistiques")
+            voters = stats.find("{*}electeurs") if stats is not None else None
+            ballots = stats.find("{*}bulletins") if stats is not None else None
+            circonscriptions = []
+            for entity in country.findall(".//{*}entite"):
+                if entity.get("circonscriptionElectorale") == "true":
+                    circonscriptions.append({"name": entity.findtext("{*}nom"), "lists": lists_of(entity)})
+            return {
+                "election": root.findtext("{*}nom"),
+                "date": root.findtext("{*}dateElection"),
+                "status": "données officieuses (unofficial machine-readable results)",
+                "national": {
+                    "registered_voters": _number(voters.get("inscrits")) if voters is not None else None,
+                    "blank_ballots": _number(ballots.get("blancs")) if ballots is not None else None,
+                    "lists": lists_of(country),
+                },
+                "circonscriptions": circonscriptions,
+                "source": url,
+                "dataset": dataset.get("page"),
+            }
+
+        return self._cached(f"elections:{url}", 3600, load)
+
+    def get_ev_charging(self, query: str | None = None, available_only: bool = False) -> dict:
+        dataset, resource = self._dataset_resource(CHARGY_SLUG, format="kml")
+        url = resource["url"]
+
+        def load() -> list[dict]:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=CHARGY_RESOURCE_HOSTS)
+            try:
+                root = ElementTree.fromstring(payload)
+            except ElementTree.ParseError as exc:
+                raise UpstreamError("Chargy returned invalid KML") from exc
+            stations = []
+            for placemark in root.findall(".//{*}Placemark"):
+                description = placemark.findtext("{*}description") or ""
+                available_match = re.search(r"(\d+)</b>\s*available", description)
+                occupied_match = re.search(r"(\d+)</b>\s*occupied", description)
+                points = placemark.findtext(".//{*}Data[@name='CPnum']/{*}value")
+                coordinates = (placemark.findtext(".//{*}coordinates") or "").strip().split(",")
+                stations.append({
+                    "name": placemark.findtext("{*}name"),
+                    "address": placemark.findtext("{*}address"),
+                    "available": (placemark.findtext("{*}styleUrl") or "") == "#AVAILABLE",
+                    "charging_points": _number(points),
+                    "available_connectors": int(available_match.group(1)) if available_match else None,
+                    "occupied_connectors": int(occupied_match.group(1)) if occupied_match else None,
+                    "longitude": _number(coordinates[0]) if len(coordinates) >= 2 else None,
+                    "latitude": _number(coordinates[1]) if len(coordinates) >= 2 else None,
+                })
+            return stations
+
+        stations = self._cached(f"chargy:{url}", 300, load)
+        if query:
+            needle = _fold(query)
+            stations = [s for s in stations if needle in _fold(f"{s.get('name') or ''} {s.get('address') or ''}")]
+        if available_only:
+            stations = [s for s in stations if s.get("available")]
+        return {"count": len(stations), "stations": stations, "source": url, "dataset": dataset.get("page")}
 
     def get_city_mobility(self, category: str) -> dict:
         layer = VDL_MOBILITY_LAYERS.get(category)

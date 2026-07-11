@@ -84,6 +84,132 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual([item["titre"] for item in result["parking"]], ["Open"])
 
 
+def _dataset_fixture(fmt, url, title="data"):
+    return {"id": "x", "slug": "s", "title": "t",
+            "resources": [{"id": "1", "title": title, "format": fmt, "url": url}]}
+
+
+def _xlsx_fixture():
+    import zipfile as _zip
+    buffer = io.BytesIO()
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    rns = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    with _zip.ZipFile(buffer, "w") as archive:
+        archive.writestr("xl/workbook.xml",
+            f'<workbook {ns} {rns}><sheets><sheet name="2025" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        archive.writestr("xl/_rels/workbook.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
+        archive.writestr("xl/sharedStrings.xml",
+            f'<sst {ns}><si><t>Commune</t></si><si><t>Nombre d\'offres</t></si><si><t>Prix moyen</t></si>'
+            f'<si><t>Prix au m²</t></si><si><t>Bertrange</t></si><si><t>Bech</t></si><si><t>*</t></si></sst>')
+        archive.writestr("xl/worksheets/sheet1.xml",
+            f'<worksheet {ns}><sheetData>'
+            '<row r="9"><c r="C9" t="s"><v>0</v></c><c r="D9" t="s"><v>1</v></c>'
+            '<c r="E9" t="s"><v>2</v></c><c r="F9" t="s"><v>3</v></c></row>'
+            '<row r="10"><c r="C10" t="s"><v>4</v></c><c r="D10"><v>406</v></c>'
+            '<c r="E10"><v>933044.5</v></c><c r="F10"><v>11331.49</v></c></row>'
+            '<row r="11"><c r="C11" t="s"><v>5</v></c><c r="D11"><v>8</v></c>'
+            '<c r="E11" t="s"><v>6</v></c><c r="F11" t="s"><v>6</v></c></row>'
+            '</sheetData></worksheet>')
+    return buffer.getvalue()
+
+
+class NewProviderTests(unittest.TestCase):
+    def test_weather_observations_labels_known_sensors(self):
+        dataset = _dataset_fixture("json", "https://download.data.public.lu/resources/hvd/livemeteo.json")
+        payload = {"timestamp": "2026-07-11T19:50:00Z", "data": [
+            {"id": "st", "value": 24.3}, {"id": "sqnh", "value": 1016}, {"id": "zzz_unknown", "value": 1}]}
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_weather_observations()
+        by_id = {o["id"]: o for o in result["observations"]}
+        self.assertEqual(result["measured_at"], "2026-07-11T19:50:00Z")
+        self.assertEqual(by_id["st"]["value"], 24.3)
+        self.assertIn("temperature", by_id["st"]["label"].lower())
+        self.assertIsNone(by_id["zzz_unknown"]["label"])
+
+    def test_public_holidays_filters_by_year(self):
+        dataset = _dataset_fixture("json", "https://download.data.public.lu/resources/holidays.json")
+        payload = [
+            {"year": 2025, "date": "2025-12-25", "en": "Christmas Day", "fr": "Noël"},
+            {"year": 2026, "date": "2026-06-23", "en": "National Day", "fr": "Fête nationale"},
+        ]
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_public_holidays(year=2026)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["holidays"][0]["en"], "National Day")
+
+    def test_parliamentary_questions_search_folds_accents(self):
+        dataset = _dataset_fixture("csv", "https://download.data.public.lu/resources/questions.csv")
+        payload = ("question_number,question_title,question_authors,question_chd_entry_date\n"
+                   '"100","Pétitions électroniques","Dupont","2026-05-01"\n'
+                   '"101","Budget de la police","Martin","2026-06-01"\n').encode()
+        result = LuxembourgData(FakeHttp([dataset, payload])).search_parliamentary_questions("petitions")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["questions"][0]["question_number"], "100")
+
+    def test_housing_prices_parses_xlsx_and_masks_asterisks(self):
+        dataset = {"id": "x", "slug": "s", "title": "t", "resources": [
+            {"id": "1", "title": "Série rétrospective des prix annoncés des appartements par commune",
+             "format": "xlsx", "url": "https://download.data.public.lu/resources/vente-appart.xlsx"}]}
+        result = LuxembourgData(FakeHttp([dataset, _xlsx_fixture()])).get_housing_prices(commune="Bertrange")
+        self.assertEqual(result["year"], "2025")
+        self.assertEqual(result["count"], 1)
+        row = result["rows"][0]
+        self.assertEqual(row["commune"], "Bertrange")
+        self.assertEqual(row["offers"], 406)
+        self.assertEqual(row["average_price_eur"], 933044.5)
+
+    def test_housing_prices_hides_unrepresentative_values(self):
+        dataset = {"id": "x", "slug": "s", "title": "t", "resources": [
+            {"id": "1", "title": "Série rétrospective des prix annoncés des appartements par commune",
+             "format": "xlsx", "url": "https://download.data.public.lu/resources/vente-appart.xlsx"}]}
+        result = LuxembourgData(FakeHttp([dataset, _xlsx_fixture()])).get_housing_prices(commune="Bech")
+        self.assertIsNone(result["rows"][0]["average_price_eur"])
+
+    def test_election_results_parses_national_lists_and_regions(self):
+        # Faithful to the real feed: prefixed root element, un-namespaced children.
+        xml = ('<e:election xmlns:e="https://www.elections.etat.lu/v2.1" type="LEGISLATIVES">'
+               "<nom>Élections législatives 2023</nom><dateElection>2023-10-08</dateElection>"
+               '<entite type="PAYS"><nom>Grand-Duché</nom>'
+               '<statistiques><electeurs inscrits="286739"/><bulletins urne="249968" blancs="7889"/></statistiques>'
+               '<resultats suffragesExprimes="3763680"><listes>'
+               '<liste numero="1" suffragesTotal="711890" pourcentage="18.91" mandatsAttribues="11">'
+               "<noms><nom>Parti Exemple</nom></noms><sigles><sigle>PE</sigle></sigles></liste>"
+               "</listes></resultats>"
+               '<entites><entite type="REGION" circonscriptionElectorale="true"><nom>Sud</nom>'
+               '<resultats suffragesExprimes="100"><listes>'
+               '<liste numero="1" suffragesTotal="60" pourcentage="60.0" mandatsAttribues="2">'
+               "<noms><nom>Parti Exemple</nom></noms><sigles><sigle>PE</sigle></sigles></liste>"
+               "</listes></resultats></entite></entites>"
+               "</entite></e:election>").encode()
+        dataset = _dataset_fixture("xml", "https://download.data.public.lu/resources/elections.xml")
+        result = LuxembourgData(FakeHttp([dataset, xml])).get_election_results()
+        self.assertEqual(result["election"], "Élections législatives 2023")
+        self.assertEqual(result["national"]["lists"][0]["party"], "Parti Exemple")
+        self.assertEqual(result["national"]["lists"][0]["seats"], 11)
+        self.assertEqual(result["circonscriptions"][0]["name"], "Sud")
+        self.assertEqual(result["circonscriptions"][0]["lists"][0]["percentage"], 60.0)
+
+    def test_ev_charging_parses_kml_and_filters_available(self):
+        kml = ('<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+               "<Placemark><name>Esch - Brill</name><address>Rue Louis Pasteur, Esch</address>"
+               "<description>&lt;b&gt;4&lt;/b&gt; connectors ... &lt;b&gt;2&lt;/b&gt; available connectors ... "
+               "&lt;b&gt;2&lt;/b&gt; occupied connectors</description>"
+               "<styleUrl>#AVAILABLE</styleUrl>"
+               '<ExtendedData><Data name="CPnum"><value>4</value></Data></ExtendedData>'
+               "<Point><coordinates>5.9806,49.4958,0</coordinates></Point></Placemark>"
+               "<Placemark><name>Full Station</name><styleUrl>#UNAVAILABLE</styleUrl>"
+               "<Point><coordinates>6.13,49.61,0</coordinates></Point></Placemark>"
+               "</Document></kml>").encode()
+        dataset = _dataset_fixture("kml", "https://my.chargy.lu/b2bev-external-services/resources/kml?API-KEY=pub")
+        result = LuxembourgData(FakeHttp([dataset, kml])).get_ev_charging(available_only=True)
+        self.assertEqual(result["count"], 1)
+        station = result["stations"][0]
+        self.assertEqual(station["name"], "Esch - Brill")
+        self.assertTrue(station["available"])
+        self.assertEqual(station["longitude"], 5.9806)
+        self.assertEqual(station["latitude"], 49.4958)
+
+
 class ProtocolTests(unittest.TestCase):
     def setUp(self):
         self.server = McpServer(LuxembourgData(FakeHttp([])))
@@ -100,9 +226,9 @@ class ProtocolTests(unittest.TestCase):
         response = self.server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
         self.assertEqual(response["result"]["protocolVersion"], "2025-11-25")
 
-    def test_lists_twenty_one_tools(self):
+    def test_lists_twenty_seven_tools(self):
         response = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        self.assertEqual(len(response["result"]["tools"]), 21)
+        self.assertEqual(len(response["result"]["tools"]), 27)
 
     def test_notifications_have_no_response(self):
         self.assertIsNone(self.server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
@@ -173,8 +299,8 @@ class ProtocolTests(unittest.TestCase):
         page = catalog_html().decode("utf-8")
         self.assertIn("Luxembourg MCP", page)
         self.assertIn("search_datasets", page)
-        self.assertEqual(page.count('class="tool-card"'), 21)
-        self.assertIn("<strong>15</strong> official systems", page)
+        self.assertEqual(page.count('class="tool-card"'), 27)
+        self.assertIn("<strong>18</strong> official systems", page)
 
 
 if __name__ == "__main__":

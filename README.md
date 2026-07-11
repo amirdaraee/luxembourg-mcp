@@ -8,10 +8,10 @@ Keyless Model Context Protocol access to Luxembourg public data.
 
 **Hosted endpoint — no install needed:** point any MCP client at `https://mcp.luxembourg-mcp.com/mcp` (streamable HTTP). Or run it yourself with `uvx luxembourg-mcp`. Website: [luxembourg-mcp.com](https://luxembourg-mcp.com)
 
-Luxembourg MCP turns fragmented public APIs and open datasets into 21 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
+Luxembourg MCP turns fragmented public APIs and open datasets into 27 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
 
-- 21 MCP tools
-- 15 public data systems
+- 27 MCP tools
+- 18 public data systems
 - No API keys or accounts
 - No scraping
 - Source URL returned with every result
@@ -50,6 +50,12 @@ Luxembourg MCP applies that idea to the Grand Duchy. It is an independent implem
 | `get_accessibility_audits` | Digital Accessibility Observatory | List recent public-sector audits |
 | `search_transit_stops` | Public Transport Administration | Search nationwide GTFS stops |
 | `get_city_mobility` | Ville de Luxembourg Maps | Retrieve mobility locations as GeoJSON |
+| `get_weather_observations` | MeteoLux | Live temperature, wind, pressure at Findel |
+| `get_public_holidays` | data.public.lu | Legal public holidays in four languages |
+| `search_parliamentary_questions` | Chamber of Deputies | Search parliamentary questions and answers |
+| `get_housing_prices` | Observatoire de l'Habitat | Advertised housing sale prices by commune |
+| `get_election_results` | CTIE | 2023 legislative election results |
+| `get_ev_charging` | Chargy | Public EV charging with live availability |
 
 ## Quick start
 
@@ -132,7 +138,7 @@ Tool output is untrusted external data. Dataset descriptions, legislation titles
 
 ## Testing
 
-The default suite is deterministic and does not use the network. It covers JSON-RPC behavior, schema validation, provider parsers, catalogue packaging, and the `tools/call` contract for all 21 tools.
+The default suite is deterministic and does not use the network. It covers JSON-RPC behavior, schema validation, provider parsers, catalogue packaging, and the `tools/call` contract for all 27 tools.
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v

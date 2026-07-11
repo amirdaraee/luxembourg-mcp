@@ -93,6 +93,30 @@ class EveryToolLiveTests(unittest.TestCase):
     def test_get_city_mobility(self):
         self.assertGreaterEqual(self.call("get_city_mobility", {"category": "bike_rentals"})["count"], 1)
 
+    def test_get_weather_observations(self):
+        data = self.call("get_weather_observations")
+        self.assertGreaterEqual(data["count"], 5)
+        self.assertIn("st", {item["id"] for item in data["observations"]})
+
+    def test_get_public_holidays(self):
+        self.assertGreaterEqual(self.call("get_public_holidays", {"year": 2026})["count"], 10)
+
+    def test_search_parliamentary_questions(self):
+        self.assertGreaterEqual(self.call("search_parliamentary_questions", {"query": "logement", "limit": 2})["count"], 1)
+
+    def test_get_housing_prices(self):
+        data = self.call("get_housing_prices", {"property_type": "apartment", "commune": "Bertrange"})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertEqual(data["rows"][0]["commune"], "Bertrange")
+
+    def test_get_election_results(self):
+        data = self.call("get_election_results")
+        self.assertGreaterEqual(len(data["national"]["lists"]), 5)
+        self.assertEqual(len(data["circonscriptions"]), 4)
+
+    def test_get_ev_charging(self):
+        self.assertGreaterEqual(self.call("get_ev_charging", {"query": "Esch"})["count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -164,6 +164,12 @@ class McpServer:
                 Tool("get_accessibility_audits", "Get the latest public-sector digital accessibility audits.", _object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10}}), source.get_accessibility_audits),
                 Tool("search_transit_stops", "Search official nationwide public-transport stops from the current ATP GTFS feed.", _object_schema({"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}, ["query"]), source.search_transit_stops),
                 Tool("get_city_mobility", "Get Ville de Luxembourg mobility locations as GeoJSON features.", _object_schema({"category": {"type": "string", "enum": ["park_and_bike", "park_and_ride", "covered_parking", "surface_parking", "accessible_parking", "bike_rentals"]}}, ["category"]), source.get_city_mobility),
+                Tool("get_weather_observations", "Get live MeteoLux weather observations at Luxembourg-Airport: temperature, wind, pressure, humidity, visibility.", _object_schema({}), source.get_weather_observations),
+                Tool("get_public_holidays", "List Luxembourg legal public holidays in four languages, optionally for one year.", _object_schema({"year": {"type": "integer", "minimum": 2020, "maximum": 2100}}), source.get_public_holidays),
+                Tool("search_parliamentary_questions", "Search Chamber of Deputies parliamentary questions by keyword, newest first.", _object_schema({"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["query"]), source.search_parliamentary_questions),
+                Tool("get_housing_prices", "Get advertised housing sale prices by commune from the official Observatoire de l'Habitat.", _object_schema({"property_type": {"type": "string", "enum": ["apartment", "house"], "default": "apartment"}, "commune": {"type": "string", "description": "Optional commune-name filter"}, "year": {"type": "string", "description": "Four-digit year such as 2025; defaults to the latest"}}), source.get_housing_prices),
+                Tool("get_election_results", "Get machine-readable 2023 legislative election results, national and per circonscription.", _object_schema({}), source.get_election_results),
+                Tool("get_ev_charging", "Get Chargy public EV charging stations with live connector availability.", _object_schema({"query": {"type": "string", "description": "Optional name or address filter"}, "available_only": {"type": "boolean", "default": False}}), source.get_ev_charging),
             ]
         }
 
@@ -199,8 +205,8 @@ class McpServer:
             return self._result(request_id, {
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "luxembourg-mcp", "version": "0.3.2"},
-                "instructions": "Keyless access to official Luxembourg public data through 21 tools. Results include upstream source URLs.",
+                "serverInfo": {"name": "luxembourg-mcp", "version": "0.4.0"},
+                "instructions": "Keyless access to official Luxembourg public data through 27 tools. Results include upstream source URLs.",
             })
         if method == "ping":
             return self._result(request_id, {})
