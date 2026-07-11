@@ -113,7 +113,7 @@ The server:
 - returns tool failures as MCP tool results without terminating the server;
 - bounds large upstream responses before placing them in agent context.
 
-The built-in HTTP server is stateless and does not provide an SSE stream. It accepts browser origins only from loopback addresses. Public deployments should add TLS, authentication where appropriate, rate limits, response caching, observability, and a deliberate CORS policy at a reverse proxy or application gateway.
+The built-in HTTP server is stateless and does not provide an SSE stream. By default it accepts browser origins only from loopback addresses; hosted deployments can extend this with `LUXEMBOURG_MCP_ALLOWED_ORIGINS` (a comma-separated origin list, or `*`), which also enables CORS preflight and response headers for the allowed origins. Public deployments should add TLS, response caching, and observability at a reverse proxy or application gateway.
 
 ## Security and deployment
 
@@ -126,7 +126,7 @@ The built-in server includes baseline controls, but it is not a replacement for 
 - HTTP clients are limited to 60 MCP requests per minute by default.
 - The Docker image runs as an unprivileged `app` user.
 
-Set `LUXEMBOURG_MCP_RATE_LIMIT` to change the per-minute, per-client limit. A value of `0` disables the built-in limiter. The limiter intentionally uses the direct TCP peer address and does not trust `X-Forwarded-For`; when deploying behind a reverse proxy, enforce the real client limit at that trusted proxy and configure the application limit appropriately.
+Set `LUXEMBOURG_MCP_RATE_LIMIT` to change the per-minute, per-client limit. A value of `0` disables the built-in limiter. The limiter intentionally uses the direct TCP peer address and does not trust forwarding headers unless `LUXEMBOURG_MCP_CLIENT_IP_HEADER` names one explicitly (for example `CF-Connecting-IP` behind Cloudflare); only set it when a trusted proxy controls that header, since clients could otherwise spoof it to escape the limit.
 
 Tool output is untrusted external data. Dataset descriptions, legislation titles, and other public text may contain misleading or adversarial instructions. MCP clients and agent hosts must treat tool results as data, not system instructions, and should require confirmation or policy checks before allowing powerful sibling tools to act on content returned here.
 
@@ -163,3 +163,7 @@ The project does not own the upstream data. Each producer's licence and terms co
 ## Licence
 
 The Luxembourg MCP source code is released under the MIT licence. Upstream public data is licensed separately by its respective producer.
+
+---
+
+mcp-name: io.github.amirdaraee/luxembourg-mcp
