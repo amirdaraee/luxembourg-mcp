@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A keyless MCP catalogue for official Luxembourg public data.">
+  <title>Luxembourg MCP Catalogue</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172027;
+      --muted: #5c6870;
+      --line: #d9dfe2;
+      --paper: #ffffff;
+      --wash: #f3f6f7;
+      --red: #ed2939;
+      --blue: #00a1de;
+      --green: #16724b;
+      --yellow: #f1c94a;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .flag-line {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      height: 5px;
+    }
+
+    .flag-line span:nth-child(1) { background: var(--red); }
+    .flag-line span:nth-child(2) { background: #fff; }
+    .flag-line span:nth-child(3) { background: var(--blue); }
+
+    header {
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .header-inner, main, footer {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .nav {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 760;
+      font-size: 17px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      color: white;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 3px #d9eee5;
+    }
+
+    .intro {
+      padding: 54px 0 42px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+      gap: 64px;
+      align-items: end;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--red);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 720px;
+      font-size: clamp(40px, 6vw, 72px);
+      line-height: .98;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      margin: 22px 0 0;
+      max-width: 660px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .endpoint-block { min-width: 0; }
+
+    .endpoint-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .endpoint {
+      display: flex;
+      min-width: 0;
+      background: #11191e;
+      border: 1px solid #11191e;
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .endpoint code {
+      min-width: 0;
+      flex: 1;
+      padding: 14px;
+      color: #dce9ee;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .copy-button {
+      border: 0;
+      border-left: 1px solid #3a454b;
+      background: #253139;
+      color: white;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .copy-button:hover { background: #34434c; }
+    .copy-button:focus-visible, .filter:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+
+    .metrics {
+      display: flex;
+      gap: 26px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metrics strong { color: var(--ink); }
+
+    main { padding: 34px 0 70px; }
+
+    .catalogue-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    h2 { margin: 0; font-size: 26px; letter-spacing: 0; }
+
+    .search {
+      width: min(100%, 360px);
+      height: 42px;
+      padding: 0 13px;
+      border: 1px solid #b9c2c7;
+      border-radius: var(--radius);
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .filter {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid #b9c2c7;
+      border-radius: 999px;
+      background: transparent;
+      color: #3d494f;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .filter[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: white; }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .tool-card {
+      min-width: 0;
+      min-height: 182px;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--source-color, var(--blue));
+      border-radius: var(--radius);
+    }
+
+    .tool-card[hidden] { display: none; }
+
+    .tool-card[data-source="catalog"] { --source-color: var(--red); }
+    .tool-card[data-source="geo"] { --source-color: var(--blue); }
+    .tool-card[data-source="environment"] { --source-color: var(--green); }
+    .tool-card[data-source="mobility"] { --source-color: #d28b16; }
+    .tool-card[data-source="government"] { --source-color: #7a52a1; }
+    .tool-card[data-source="statistics"] { --source-color: #2d6472; }
+
+    .tool-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .source-name { font-weight: 750; }
+
+    .keyless {
+      color: var(--green);
+      font-weight: 750;
+    }
+
+    .tool-card h3 {
+      margin: 0 0 9px;
+      overflow-wrap: anywhere;
+      font: 700 16px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0;
+    }
+
+    .tool-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .tool-card .arguments {
+      margin-top: auto;
+      padding-top: 18px;
+      color: #77838a;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      display: none;
+      padding: 44px 0;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    footer {
+      padding: 28px 0 38px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    footer p { margin: 0; max-width: 700px; }
+
+    @media (max-width: 760px) {
+      .header-inner, main, footer { width: min(100% - 24px, 1120px); }
+      .intro { grid-template-columns: 1fr; gap: 28px; padding: 38px 0 32px; }
+      h1 { font-size: 44px; }
+      .lede { font-size: 16px; }
+      .catalogue-head { align-items: stretch; flex-direction: column; }
+      .search { width: 100%; }
+      .tool-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; }
+    }
+
+    @media (max-width: 420px) {
+      .status span:last-child { display: none; }
+      .metrics { gap: 14px; flex-wrap: wrap; }
+      .endpoint code { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="flag-line" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="header-inner">
+      <nav class="nav" aria-label="Main navigation">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">LU</span> Luxembourg MCP</div>
+        <div class="status"><span class="status-dot" aria-hidden="true"></span><span>Keyless public data</span></div>
+      </nav>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">Official sources, agent-ready</p>
+          <h1>Luxembourg public data over MCP</h1>
+          <p class="lede">One endpoint for laws, statistics, mobility, addresses, environment, parliament, and the national open-data catalogue. No account or API key required.</p>
+        </div>
+        <div class="endpoint-block">
+          <span class="endpoint-label">MCP endpoint</span>
+          <div class="endpoint">
+            <code id="endpoint">http://127.0.0.1:8000/mcp</code>
+            <button class="copy-button" id="copy" type="button">Copy</button>
+          </div>
+          <div class="metrics"><span><strong>21</strong> tools</span><span><strong>15</strong> official systems</span><span><strong>0</strong> API keys</span></div>
+        </div>
+      </section>
+    </div>
+  </header>
+
+  <main>
+    <div class="catalogue-head">
+      <div><p class="eyebrow">Catalogue</p><h2>Available tools</h2></div>
+      <input class="search" id="search" type="search" placeholder="Search tools and sources" aria-label="Search tools and sources">
+    </div>
+
+    <div class="filters" aria-label="Filter tools by domain">
+      <button class="filter" type="button" data-filter="all" aria-pressed="true">All sources</button>
+      <button class="filter" type="button" data-filter="government" aria-pressed="false">Government</button>
+      <button class="filter" type="button" data-filter="mobility" aria-pressed="false">Mobility</button>
+      <button class="filter" type="button" data-filter="environment" aria-pressed="false">Environment</button>
+      <button class="filter" type="button" data-filter="statistics" aria-pressed="false">Statistics</button>
+      <button class="filter" type="button" data-filter="geo" aria-pressed="false">Geospatial</button>
+      <button class="filter" type="button" data-filter="catalog" aria-pressed="false">Open data</button>
+    </div>
+
+    <section class="tool-grid" id="tools" aria-live="polite">
+      <article class="tool-card" data-source="catalog"><div class="tool-meta"><span class="source-name">data.public.lu</span><span class="keyless">Keyless</span></div><h3>search_datasets</h3><p>Search Luxembourg's national open-data catalogue.</p><span class="arguments">query · page? · page_size?</span></article>
+      <article class="tool-card" data-source="catalog"><div class="tool-meta"><span class="source-name">data.public.lu</span><span class="keyless">Keyless</span></div><h3>get_dataset</h3><p>Inspect metadata, licences, and current resource downloads.</p><span class="arguments">dataset_id_or_slug</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail</span><span class="keyless">Keyless</span></div><h3>geocode_address</h3><p>Resolve an official Luxembourg address to coordinates.</p><span class="arguments">query</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail</span><span class="keyless">Keyless</span></div><h3>reverse_geocode</h3><p>Find the nearest official address to WGS84 coordinates.</p><span class="arguments">latitude · longitude</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail OGC</span><span class="keyless">Keyless</span></div><h3>list_geo_collections</h3><p>Discover queryable official geospatial collections.</p><span class="arguments">query? · limit?</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail OGC</span><span class="keyless">Keyless</span></div><h3>get_geo_features</h3><p>Retrieve bounded GeoJSON features from a collection.</p><span class="arguments">collection_id · limit? · bbox?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">MeteoLux</span><span class="keyless">Keyless</span></div><h3>get_weather_alerts</h3><p>Read current official weather warnings in four languages.</p><span class="arguments">language? en · fr · de · lu</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Legilux</span><span class="keyless">Keyless</span></div><h3>search_legislation</h3><p>Search legislation and consolidated laws by title.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-meta"><span class="source-name">STATEC LUSTAT</span><span class="keyless">Keyless</span></div><h3>search_statistics</h3><p>Discover official statistical dataflows by topic.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-meta"><span class="source-name">STATEC LUSTAT</span><span class="keyless">Keyless</span></div><h3>get_statistics</h3><p>Retrieve recent labelled observations through SDMX.</p><span class="arguments">dataflow_id · key? · last_n_observations?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Ville de Luxembourg</span><span class="keyless">Keyless</span></div><h3>get_city_parking</h3><p>Get live car-park capacity, free spaces, and status.</p><span class="arguments">query? · available_only?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CFL</span><span class="keyless">Keyless</span></div><h3>list_cfl_parking</h3><p>List CFL Park and Ride facilities and capacities.</p><span class="arguments">no arguments</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CFL</span><span class="keyless">Keyless</span></div><h3>get_cfl_parking</h3><p>Get live occupancy and free spaces for one P+R.</p><span class="arguments">parking_id</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CITA</span><span class="keyless">Keyless</span></div><h3>get_traffic</h3><p>Read motorway speed, flow, and occupancy sensors.</p><span class="arguments">road? a3 · a4 · a6 · a7 · a13 · b40</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">Administration de la gestion de l'eau</span><span class="keyless">Keyless</span></div><h3>get_water_levels</h3><p>Get the latest measurements from national water stations.</p><span class="arguments">station?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">Administration de l'environnement</span><span class="keyless">Keyless</span></div><h3>get_air_quality</h3><p>Read the latest national telemetric pollution measurements.</p><span class="arguments">city?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Chambre des Députés</span><span class="keyless">Keyless</span></div><h3>search_chamber_bodies</h3><p>Search committees, delegations, memberships, and roles.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Accessibility Observatory</span><span class="keyless">Keyless</span></div><h3>get_accessibility_figures</h3><p>Get national website, app, statement, and audit totals.</p><span class="arguments">no arguments</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Accessibility Observatory</span><span class="keyless">Keyless</span></div><h3>get_accessibility_audits</h3><p>List recent public-sector digital accessibility audits.</p><span class="arguments">limit?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Administration des transports publics</span><span class="keyless">Keyless</span></div><h3>search_transit_stops</h3><p>Search nationwide bus, rail, and tram stops in GTFS.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Ville de Luxembourg Maps</span><span class="keyless">Keyless</span></div><h3>get_city_mobility</h3><p>Get parking, P+R, P+B, and bike-rental GeoJSON.</p><span class="arguments">category</span></article>
+    </section>
+    <p class="empty" id="empty">No tools match this search.</p>
+  </main>
+
+  <footer>
+    <p>Independent project. Not affiliated with the Luxembourg government or its agencies. Each response preserves its official upstream source.</p>
+    <p>MCP 2025-11-25</p>
+  </footer>
+
+  <script>
+    const endpoint = `${window.location.origin}/mcp`;
+    const endpointNode = document.querySelector('#endpoint');
+    const copyButton = document.querySelector('#copy');
+    const search = document.querySelector('#search');
+    const cards = [...document.querySelectorAll('.tool-card')];
+    const filters = [...document.querySelectorAll('.filter')];
+    const empty = document.querySelector('#empty');
+    let activeFilter = 'all';
+
+    endpointNode.textContent = endpoint;
+
+    copyButton.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(endpoint);
+      copyButton.textContent = 'Copied';
+      window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1400);
+    });
+
+    function updateTools() {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      cards.forEach((card) => {
+        const sourceMatch = activeFilter === 'all' || card.dataset.source === activeFilter;
+        const textMatch = !query || card.textContent.toLowerCase().includes(query);
+        const show = sourceMatch && textMatch;
+        card.hidden = !show;
+        if (show) visible += 1;
+      });
+      empty.style.display = visible ? 'none' : 'block';
+    }
+
+    filters.forEach((button) => {
+      button.addEventListener('click', () => {
+        activeFilter = button.dataset.filter;
+        filters.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        updateTools();
+      });
+    });
+
+    search.addEventListener('input', updateTools);
+  </script>
+</body>
+</html>

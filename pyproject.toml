@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luxembourg-mcp"
+version = "0.3.0"
+description = "Keyless MCP access to official Luxembourg public data"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Luxembourg MCP contributors"}]
+dependencies = []
+
+[project.scripts]
+luxembourg-mcp = "luxembourg_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+luxembourg_mcp = ["static/*.html"]
