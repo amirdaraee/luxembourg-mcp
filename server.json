@@ -7,6 +7,12 @@
     "source": "github"
   },
   "version": "0.3.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.luxembourg-mcp.com/mcp"
+    }
+  ],
   "packages": [
     {
       "registry_type": "pypi",

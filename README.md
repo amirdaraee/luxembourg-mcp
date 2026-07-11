@@ -6,6 +6,8 @@
 
 Keyless Model Context Protocol access to Luxembourg public data.
 
+**Hosted endpoint — no install needed:** point any MCP client at `https://mcp.luxembourg-mcp.com/mcp` (streamable HTTP). Or run it yourself with `uvx luxembourg-mcp`. Website: [luxembourg-mcp.com](https://luxembourg-mcp.com)
+
 Luxembourg MCP turns fragmented public APIs and open datasets into 21 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
 
 - 21 MCP tools

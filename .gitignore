@@ -6,3 +6,7 @@ dist/
 build/
 *.egg-info/
 
+
+node_modules/
+package-lock.json
+.wrangler/

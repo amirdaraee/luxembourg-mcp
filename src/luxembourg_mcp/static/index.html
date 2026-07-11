@@ -319,15 +319,12 @@
   <script>
     const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
     const isLocal = localHosts.includes(window.location.hostname);
-    const endpoint = isLocal ? `${window.location.origin}/mcp` : 'http://127.0.0.1:8000/mcp';
-    if (isLocal) {
-      document.querySelector('#endpoint').textContent = endpoint;
-    } else {
-      document.querySelector('.field-label span').textContent = 'Run it locally';
-      document.querySelector('.field-label em').textContent = 'then connect on port 8000';
-      document.querySelector('#endpoint').textContent = 'uvx luxembourg-mcp --transport http';
-      document.querySelector('.status span:last-child').textContent = 'Keyless public data';
+    const endpoint = isLocal ? `${window.location.origin}/mcp` : 'https://mcp.luxembourg-mcp.com/mcp';
+    if (!isLocal) {
+      document.querySelector('.field-label em').textContent = 'hosted · no install needed';
+      document.querySelector('.status span:last-child').textContent = 'Public endpoint live';
     }
+    document.querySelector('#endpoint').textContent = endpoint;
     document.querySelector('#config-endpoint').textContent = endpoint;
 
     const search = document.querySelector('#search');
