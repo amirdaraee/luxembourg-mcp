@@ -9,7 +9,7 @@ description = "Keyless MCP access to official Luxembourg public data"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "Luxembourg MCP contributors"}]
+authors = [{name = "Amirhossein Daraei"}]
 dependencies = []
 
 [project.scripts]
