@@ -10,3 +10,6 @@ build/
 node_modules/
 package-lock.json
 .wrangler/
+
+# local experiments
+sandbox/
