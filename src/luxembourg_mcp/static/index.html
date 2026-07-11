@@ -12,6 +12,7 @@
   <link rel="canonical" href="https://luxembourg-mcp.com/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🇱🇺</text></svg>">
   <title>Luxembourg MCP — official public data for agents</title>
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
   <style>
     :root{
       --bg:#eef0f1; --surface:#ffffff; --surface-2:#f6f7f8;
@@ -24,7 +25,7 @@
       --radius:5px;
     }
     @media (prefers-color-scheme: dark){
-      :root{
+      :root:not([data-theme="light"]){
         --bg:#0c0f11; --surface:#14181b; --surface-2:#191e21;
         --ink:#eef1f2; --muted:#9aa4ab; --faint:#78838a;
         --line:#262c30; --line-2:#333b40;
@@ -34,6 +35,17 @@
         --c-catalog:#ff4149; --c-geo:#3bb4e6; --c-government:#9683ec; --c-mobility:#e0a02f; --c-environment:#38b285; --c-statistics:#39a6bd;
       }
     }
+    :root[data-theme="dark"]{
+        --bg:#0c0f11; --surface:#14181b; --surface-2:#191e21;
+        --ink:#eef1f2; --muted:#9aa4ab; --faint:#78838a;
+        --line:#262c30; --line-2:#333b40;
+        --red:#ff4149; --blue:#2bb8ef;
+        --panel:#080b0c; --panel-ink:#dbe6ea; --panel-line:#242d32;
+        --focus:#4db8ec;
+        --c-catalog:#ff4149; --c-geo:#3bb4e6; --c-government:#9683ec; --c-mobility:#e0a02f; --c-environment:#38b285; --c-statistics:#39a6bd;
+      }
+    :root[data-theme="light"]{ color-scheme: light; }
+    :root[data-theme="dark"]{ color-scheme: dark; }
     :root{ color-scheme: light dark; }
     *{ box-sizing:border-box; }
     html{ -webkit-text-size-adjust:100%; }
@@ -75,6 +87,12 @@
     .status{ display:inline-flex; align-items:center; gap:7px; color:var(--muted); font:600 12px/1 "IBM Plex Mono", monospace; letter-spacing:.02em; }
     .dot{ width:8px; height:8px; border-radius:50%; background:var(--c-environment); box-shadow:0 0 0 3px color-mix(in srgb, var(--c-environment) 22%, transparent); }
     .ghlink{ color:var(--ink); font-weight:600; }
+    .theme-toggle{
+      border:1px solid var(--line-2); border-radius:999px; background:var(--surface); color:var(--muted);
+      padding:6px 12px; font:600 11px/1 "IBM Plex Mono", monospace; letter-spacing:.08em; text-transform:uppercase;
+      transition:border-color .12s, color .12s;
+    }
+    .theme-toggle:hover{ color:var(--ink); border-color:var(--ink); }
 
     /* Hero */
     .hero{ background:var(--surface); border-bottom:1px solid var(--line); }
@@ -209,6 +227,7 @@
         </div>
         <div class="nav-right">
           <span class="status"><span class="dot" aria-hidden="true"></span><span>Server running</span></span>
+          <button class="theme-toggle" id="theme" type="button" aria-label="Switch between light and dark theme">Theme</button>
           <a class="ghlink" href="https://github.com/amirdaraee/luxembourg-mcp" rel="noopener">View on GitHub</a>
         </div>
       </nav>
@@ -323,6 +342,22 @@
   </footer>
 
   <script>
+    const themeButton = document.querySelector('#theme');
+    function currentTheme(){
+      return document.documentElement.dataset.theme
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+    function labelTheme(){
+      themeButton.textContent = currentTheme() === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+    themeButton.addEventListener('click', () => {
+      const next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      labelTheme();
+    });
+    labelTheme();
+
     const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
     const isLocal = localHosts.includes(window.location.hostname);
     const endpoint = isLocal ? `${window.location.origin}/mcp` : 'https://mcp.luxembourg-mcp.com/mcp';
