@@ -13,9 +13,12 @@ export class LuxembourgMcp extends Container {
 
 export default {
   async fetch(request, env) {
-    // Singleton instance so the in-process GTFS/STATEC caches are shared
-    // across all clients instead of rebuilt per container.
-    const container = env.LUXEMBOURG_MCP.getByName("main");
+    // One instance per release: the name change on deploy routes traffic to a
+    // fresh Durable Object (and therefore a fresh container on the new image),
+    // because an existing DO keeps its originally provisioned container across
+    // rolling deploys. Within a release it stays a singleton so the in-process
+    // GTFS/STATEC caches are shared across all clients.
+    const container = env.LUXEMBOURG_MCP.getByName(`main-${env.RELEASE}`);
     await container.startAndWaitForPorts();
     return container.fetch(request);
   },

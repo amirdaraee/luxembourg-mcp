@@ -30,6 +30,9 @@
       "custom_domain": true
     }
   ],
+  "vars": {
+    "RELEASE": "0.3.2"
+  },
   "observability": {
     "enabled": true
   }

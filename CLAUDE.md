@@ -52,6 +52,7 @@ The contract tests enforce set-equality between registered tools and test cases,
 
 ## Conventions
 
-- Version string lives in four places and must stay in sync: `pyproject.toml`, `__init__.__version__`, the User-Agent in http.py, and `serverInfo` in server.py.
+- Version string lives in six places and must stay in sync: `pyproject.toml`, `__init__.__version__`, the User-Agent in http.py, `serverInfo` in server.py, `server.json` (two fields), and `RELEASE` in `deploy/cloudflare/wrangler.jsonc`.
+- The hosted endpoint (deploy/cloudflare) routes to a Durable Object named `main-${RELEASE}`: an existing DO keeps its originally provisioned container image across rolling deploys, so bumping `RELEASE` is what actually ships new server code to mcp.luxembourg-mcp.com. Deploy with `npx wrangler deploy` from deploy/cloudflare (Docker must be running); verify with an MCP `initialize` against the live endpoint.
 - Keyless only: no upstream that requires an API key, account, or scraping.
 - Do not add `Co-Authored-By` / AI-attribution trailers to git commits.
