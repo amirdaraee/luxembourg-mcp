@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run offline test suite
+        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+      - name: Install wheel and smoke-test the server
+        run: |
+          pip install dist/*.whl
+          luxembourg-mcp --transport http --port 8123 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8123/health && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8123/ | grep -q 'tool-card'
+          curl -sf -X POST http://127.0.0.1:8123/mcp \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            | grep -q '"luxembourg-mcp"'

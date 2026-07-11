@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.amirdaraee/luxembourg-mcp",
+  "description": "Keyless MCP access to official Luxembourg public data: laws, statistics, mobility, environment, parliament, addresses, geodata, and the national open-data catalogue.",
+  "repository": {
+    "url": "https://github.com/amirdaraee/luxembourg-mcp",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registry_type": "pypi",
+      "identifier": "luxembourg-mcp",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

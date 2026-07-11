@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="A keyless MCP catalogue for official Luxembourg public data.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Luxembourg MCP — official Luxembourg public data for AI agents">
+  <meta property="og:description" content="21 MCP tools over 15 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🇱🇺</text></svg>">
   <title>Luxembourg MCP Catalogue</title>
   <style>
     :root {
@@ -405,10 +410,16 @@
     const empty = document.querySelector('#empty');
     let activeFilter = 'all';
 
-    endpointNode.textContent = endpoint;
+    const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
+    if (localHosts.includes(window.location.hostname)) {
+      endpointNode.textContent = endpoint;
+    } else {
+      document.querySelector('.endpoint-label').textContent = 'Run it locally';
+      endpointNode.textContent = 'uvx luxembourg-mcp';
+    }
 
     copyButton.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(endpoint);
+      await navigator.clipboard.writeText(endpointNode.textContent);
       copyButton.textContent = 'Copied';
       window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1400);
     });

@@ -10,7 +10,26 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Amirhossein Daraei"}]
+keywords = ["mcp", "model-context-protocol", "luxembourg", "open-data", "geodata", "statistics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Scientific/Engineering :: GIS",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/amirdaraee/luxembourg-mcp"
+Repository = "https://github.com/amirdaraee/luxembourg-mcp"
+Issues = "https://github.com/amirdaraee/luxembourg-mcp/issues"
 
 [project.scripts]
 luxembourg-mcp = "luxembourg_mcp.__main__:main"

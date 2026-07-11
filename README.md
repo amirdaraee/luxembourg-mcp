@@ -1,5 +1,9 @@
 # Luxembourg MCP
 
+[![CI](https://github.com/amirdaraee/luxembourg-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/amirdaraee/luxembourg-mcp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/luxembourg-mcp)](https://pypi.org/project/luxembourg-mcp/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Keyless Model Context Protocol access to Luxembourg public data.
 
 Luxembourg MCP turns fragmented public APIs and open datasets into 21 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
