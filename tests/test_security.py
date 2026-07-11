@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from luxembourg_mcp.http import HttpClient, UpstreamError, validate_external_url
 from luxembourg_mcp.providers import MAX_GTFS_MEMBER_BYTES, _read_bounded_zip_member
-from luxembourg_mcp.server import MAX_REQUEST_BYTES, McpServer, RateLimiter
+from luxembourg_mcp.server import MAX_REQUEST_BYTES, McpServer, RateLimiter, _origin_is_local
 
 
 class FakeHeaders(dict):
@@ -145,6 +145,23 @@ class SecurityTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_origin_check_requires_exact_local_hostname(self):
+        for origin in ("http://localhost", "http://localhost:3000", "https://localhost", "http://127.0.0.1:8000", "http://[::1]:8000"):
+            with self.subTest(origin=origin):
+                self.assertTrue(_origin_is_local(origin))
+        for origin in (
+            "http://localhost.evil.example",
+            "http://127.0.0.1.evil.example",
+            "http://[::1].evil.example",
+            "http://localhost@evil.example",
+            "https://evil.example",
+            "file://localhost/etc",
+            "null",
+            "",
+        ):
+            with self.subTest(origin=origin):
+                self.assertFalse(_origin_is_local(origin))
 
     def test_docker_runs_as_non_root_user(self):
         dockerfile = Path("Dockerfile").read_text()

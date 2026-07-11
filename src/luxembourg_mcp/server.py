@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from .http import UpstreamError
 from .providers import LuxembourgData
@@ -24,6 +25,14 @@ DEFAULT_RATE_LIMIT = 60
 
 def catalog_html() -> bytes:
     return files("luxembourg_mcp").joinpath("static/index.html").read_bytes()
+
+
+def _origin_is_local(origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
 
 
 @dataclass(frozen=True)
@@ -253,7 +262,7 @@ class McpServer:
                     self._send(404, {"error": "Not found"})
                     return
                 origin = self.headers.get("Origin")
-                if origin and not origin.startswith(("http://localhost", "http://127.0.0.1", "http://[::1]")):
+                if origin and not _origin_is_local(origin):
                     self._send(403, {"error": "Origin is not allowed by the built-in local server"})
                     return
                 if not limiter.allow(self.client_address[0]):
