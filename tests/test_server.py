@@ -44,6 +44,24 @@ class ProviderTests(unittest.TestCase):
         result = LuxembourgData(http).list_geo_collections("cycle")
         self.assertEqual([item["id"] for item in result["collections"]], ["1"])
 
+    def test_water_levels_station_filter_ignores_accents(self):
+        payload = "Name;Ettelbrück / Alzette;Remich\nNumber;7;8\nUnit;cm;cm\n10.07.2026 20:00;68.4;349\n".encode()
+        result = LuxembourgData(FakeHttp([payload])).get_water_levels("Ettelbruck")
+        self.assertEqual([item["name"] for item in result["stations"]], ["Ettelbrück / Alzette"])
+
+    def test_weather_alerts_skip_excel_preamble(self):
+        dataset = {
+            "id": "x", "slug": "meteolux", "title": "alerts",
+            "resources": [{"id": "1", "title": "en-data-alerts.csv", "format": "csv",
+                           "url": "https://download.data.public.lu/resources/en-data-alerts.csv"}],
+        }
+        csv_payload = (b"sep=;\ncreated;11-07-2026 13:29:53\n"
+                       b"NORTH;SOUTH;LEGEND;DESCRIPTION\nfalse;true;Potential Risk;Heat warning\n")
+        result = LuxembourgData(FakeHttp([dataset, csv_payload])).get_weather_alerts("en")
+        self.assertEqual(result["created"], "11-07-2026 13:29:53")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["alerts"][0]["DESCRIPTION"], "Heat warning")
+
     def test_water_levels_returns_latest_filtered_station(self):
         payload = b"Unit;cm;cm\nName;Mersch;Remich\nNumber;7;8\n10.07.2026 20:00;68.4;349\n10.07.2026 19:45;67.9;348\n\n"
         result = LuxembourgData(FakeHttp([payload])).get_water_levels("Mersch")

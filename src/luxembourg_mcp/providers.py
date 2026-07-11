@@ -7,6 +7,7 @@ import io
 import json
 import re
 import time
+import unicodedata
 import zipfile
 from datetime import datetime
 from xml.etree import ElementTree
@@ -41,6 +42,12 @@ CITA_ROADS = {"a3", "a4", "a6", "a7", "a13", "b40"}
 DATA_PUBLIC_RESOURCE_HOSTS = frozenset({"download.data.public.lu"})
 MAX_GTFS_MEMBER_BYTES = 10 * 1024 * 1024
 MAX_ZIP_COMPRESSION_RATIO = 100
+
+
+def _fold(text: str) -> str:
+    """Casefold and strip accents so 'Ettelbruck' matches 'Ettelbrück'."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold()
 
 
 def _organization(value: Any) -> str | None:
@@ -153,16 +160,16 @@ class LuxembourgData:
         url = f"{FEATURES}/collections?f=json"
         collections = self.http.get_json(url).get("collections", [])
         if query:
-            needle = query.casefold()
+            needle = _fold(query)
             collections = [
                 item for item in collections
-                if needle in " ".join(
+                if needle in _fold(" ".join(
                     str(value) for value in (
                         item.get("title", ""),
                         item.get("description", ""),
                         *(item.get("keywords") or []),
                     )
-                ).casefold()
+                ))
             ]
         total = len(collections)
         return {
@@ -216,6 +223,15 @@ class LuxembourgData:
             raise UpstreamError("MeteoLux alert resource has no download URL")
         raw, charset = self.http.get_bytes(resource_url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
         text = raw.decode(charset, errors="replace")
+        # MeteoLux prefixes the CSV with an Excel "sep=;" hint and a "created;<timestamp>"
+        # metadata line before the real header row.
+        lines = text.splitlines()
+        created = None
+        while lines and (lines[0].lower().startswith("sep=") or lines[0].lower().startswith("created")):
+            if lines[0].lower().startswith("created") and ";" in lines[0]:
+                created = lines[0].split(";", 1)[1].strip()
+            lines.pop(0)
+        text = "\n".join(lines)
         try:
             dialect = csv.Sniffer().sniff(text[:2048], delimiters=",;")
         except csv.Error:
@@ -223,6 +239,7 @@ class LuxembourgData:
         alerts = list(csv.DictReader(io.StringIO(text), dialect=dialect))
         return {
             "language": language,
+            "created": created,
             "count": len(alerts),
             "alerts": alerts,
             "source": resource_url,
@@ -280,10 +297,10 @@ class LuxembourgData:
     def search_statistics(self, query: str, limit: int = 10) -> dict:
         if not query.strip():
             raise ValueError("query must not be empty")
-        needle = query.casefold()
+        needle = _fold(query)
         matches = [
             item for item in self._statec_dataflows()
-            if needle in " ".join(str(value or "") for value in item.values()).casefold()
+            if needle in _fold(" ".join(str(value or "") for value in item.values()))
         ][: min(max(limit, 1), 50)]
         return {
             "count": len(matches),
@@ -315,8 +332,8 @@ class LuxembourgData:
         data = self.http.get_json(VDL_PARKING)
         parking = list((data.get("parking") or {}).values())
         if query:
-            needle = query.casefold()
-            parking = [item for item in parking if needle in json.dumps(item, ensure_ascii=False).casefold()]
+            needle = _fold(query)
+            parking = [item for item in parking if needle in _fold(json.dumps(item, ensure_ascii=False))]
         if available_only:
             parking = [item for item in parking if item.get("ouvert") and (item.get("actuel") or 0) > 0]
         return {"updated": data.get("last_build_date"), "count": len(parking), "parking": parking, "source": VDL_PARKING}
@@ -380,7 +397,7 @@ class LuxembourgData:
                 "unit": units[index] if index < len(units) else None,
                 "value": _number(latest[index]),
             }
-            if not station or station.casefold() in item["name"].casefold():
+            if not station or _fold(station) in _fold(item["name"]):
                 results.append(item)
         return {"measured_at": latest[0], "count": len(results), "stations": results, "source": WATER_LEVELS}
 
@@ -398,8 +415,8 @@ class LuxembourgData:
         latest = self._cached(f"air:{resource_url}", 600, load)
         stations = latest.get("station", [])
         if city:
-            needle = city.casefold()
-            stations = [item for item in stations if needle in (item.get("adr_city") or "").casefold()]
+            needle = _fold(city)
+            stations = [item for item in stations if needle in _fold(item.get("adr_city") or "")]
         return {"generated": latest.get("generated"), "count": len(stations), "stations": stations, "source": resource_url, "dataset": dataset.get("page")}
 
     def search_chamber_bodies(self, query: str, limit: int = 20) -> dict:
@@ -412,8 +429,8 @@ class LuxembourgData:
         url = resource["url"]
         payload, _ = self.http.get_bytes(url, {"Accept": "text/csv"}, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
         rows = self._decode_csv(payload)
-        needle = query.casefold()
-        results = [row for row in rows if needle in " ".join(row.values()).casefold()][: min(max(limit, 1), 100)]
+        needle = _fold(query)
+        results = [row for row in rows if needle in _fold(" ".join(row.values()))][: min(max(limit, 1), 100)]
         return {"count": len(results), "results": results, "source": url, "dataset": dataset.get("page")}
 
     def get_accessibility_figures(self) -> dict:
@@ -445,8 +462,8 @@ class LuxembourgData:
             except (KeyError, zipfile.BadZipFile) as exc:
                 raise UpstreamError("Official GTFS archive has no valid stops.txt") from exc
         stops = self._cached(f"gtfs:{url}", 3600, load)
-        needle = query.casefold()
-        matches = [stop for stop in stops if needle in " ".join(stop.values()).casefold()][: min(max(limit, 1), 100)]
+        needle = _fold(query)
+        matches = [stop for stop in stops if needle in _fold(" ".join(stop.values()))][: min(max(limit, 1), 100)]
         return {"count": len(matches), "stops": matches, "source": url, "dataset": dataset.get("page")}
 
     def get_city_mobility(self, category: str) -> dict:
