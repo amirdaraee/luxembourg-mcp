@@ -716,7 +716,10 @@ class LuxembourgData:
         url = resource["url"]
 
         def load() -> list[dict]:
-            payload, _ = self.http.get_bytes(url, allowed_hosts=CHARGY_RESOURCE_HOSTS)
+            # Chargy's endpoint content-negotiates strictly and rejects our default
+            # JSON-preferring Accept header with HTTP 406.
+            accept = {"Accept": "application/vnd.google-earth.kml+xml, application/xml;q=0.9, */*;q=0.5"}
+            payload, _ = self.http.get_bytes(url, accept, allowed_hosts=CHARGY_RESOURCE_HOSTS)
             try:
                 root = ElementTree.fromstring(payload)
             except ElementTree.ParseError as exc:

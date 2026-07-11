@@ -25,6 +25,7 @@ class FakeHttp:
 
     def get_bytes(self, url, headers=None, **kwargs):
         self.urls.append(url)
+        self.headers = headers
         return self.responses.pop(0), "utf-8"
 
 
@@ -188,6 +189,14 @@ class NewProviderTests(unittest.TestCase):
         self.assertEqual(result["national"]["lists"][0]["seats"], 11)
         self.assertEqual(result["circonscriptions"][0]["name"], "Sud")
         self.assertEqual(result["circonscriptions"][0]["lists"][0]["percentage"], 60.0)
+
+    def test_ev_charging_requests_kml_accept_header(self):
+        # Chargy's endpoint answers 406 to a JSON-preferring Accept header.
+        kml = b'<kml xmlns="http://www.opengis.net/kml/2.2"><Document></Document></kml>'
+        dataset = _dataset_fixture("kml", "https://my.chargy.lu/b2bev-external-services/resources/kml?API-KEY=pub")
+        http = FakeHttp([dataset, kml])
+        LuxembourgData(http).get_ev_charging()
+        self.assertIn("kml", (http.headers or {}).get("Accept", ""))
 
     def test_ev_charging_parses_kml_and_filters_available(self):
         kml = ('<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
