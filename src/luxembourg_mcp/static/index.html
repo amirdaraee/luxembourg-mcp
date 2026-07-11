@@ -3,428 +3,363 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A keyless MCP catalogue for official Luxembourg public data.">
+  <meta name="description" content="A keyless MCP server for official Luxembourg public data: laws, statistics, mobility, geodata, environment, and parliament.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Luxembourg MCP — official Luxembourg public data for AI agents">
+  <meta property="og:title" content="Luxembourg MCP — official public data for agents">
   <meta property="og:description" content="21 MCP tools over 15 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
+  <meta property="og:url" content="https://luxembourg-mcp.com/">
   <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://luxembourg-mcp.com/">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🇱🇺</text></svg>">
-  <title>Luxembourg MCP Catalogue</title>
+  <title>Luxembourg MCP — official public data for agents</title>
   <style>
-    :root {
-      color-scheme: light;
-      --ink: #172027;
-      --muted: #5c6870;
-      --line: #d9dfe2;
-      --paper: #ffffff;
-      --wash: #f3f6f7;
-      --red: #ed2939;
-      --blue: #00a1de;
-      --green: #16724b;
-      --yellow: #f1c94a;
-      --radius: 6px;
+    :root{
+      --bg:#eef0f1; --surface:#ffffff; --surface-2:#f6f7f8;
+      --ink:#14181b; --muted:#5a656e; --faint:#828d95;
+      --line:#dde1e4; --line-2:#c7cdd1;
+      --red:#ea141d; --blue:#00a2e1;
+      --panel:#111619; --panel-ink:#dfe8ec; --panel-line:#2b353b;
+      --focus:#0069a8;
+      --c-catalog:#ea141d; --c-geo:#0090c7; --c-government:#6a53c9; --c-mobility:#c07c0c; --c-environment:#1f9068; --c-statistics:#1d7c90;
+      --radius:5px;
     }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      background: var(--wash);
-      color: var(--ink);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0c0f11; --surface:#14181b; --surface-2:#191e21;
+        --ink:#eef1f2; --muted:#9aa4ab; --faint:#78838a;
+        --line:#262c30; --line-2:#333b40;
+        --red:#ff4149; --blue:#2bb8ef;
+        --panel:#080b0c; --panel-ink:#dbe6ea; --panel-line:#242d32;
+        --focus:#4db8ec;
+        --c-catalog:#ff4149; --c-geo:#3bb4e6; --c-government:#9683ec; --c-mobility:#e0a02f; --c-environment:#38b285; --c-statistics:#39a6bd;
+      }
     }
-
-    button, input { font: inherit; }
-    button { cursor: pointer; }
-
-    .flag-line {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      height: 5px;
+    :root{ color-scheme: light dark; }
+    *{ box-sizing:border-box; }
+    html{ -webkit-text-size-adjust:100%; }
+    body{
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family:"Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height:1.5; font-variant-numeric:tabular-nums;
+      -webkit-font-smoothing:antialiased;
     }
+    a{ color:var(--blue); text-decoration:none; }
+    a:hover{ text-decoration:underline; }
+    button, input{ font:inherit; color:inherit; }
+    button{ cursor:pointer; }
+    code, .mono{ font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    :focus-visible{ outline:2px solid var(--focus); outline-offset:2px; border-radius:2px; }
 
-    .flag-line span:nth-child(1) { background: var(--red); }
-    .flag-line span:nth-child(2) { background: #fff; }
-    .flag-line span:nth-child(3) { background: var(--blue); }
+    .wrap{ width:min(1160px, calc(100% - 48px)); margin:0 auto; }
 
-    header {
-      background: var(--paper);
-      border-bottom: 1px solid var(--line);
+    /* Flag rule */
+    .tricolor{ display:grid; grid-template-columns:1fr 1fr 1fr; height:4px; }
+    .tricolor i:nth-child(1){ background:var(--red); }
+    .tricolor i:nth-child(2){ background:#f4f5f6; }
+    .tricolor i:nth-child(3){ background:var(--blue); }
+
+    /* Header */
+    header{ background:var(--surface); border-bottom:1px solid var(--line); }
+    .nav{ min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .mark{
+      width:32px; height:32px; flex:none; display:grid; grid-template-rows:1fr 4px;
+      background:var(--ink); border-radius:4px; overflow:hidden;
     }
+    .mark b{ display:grid; place-items:center; color:var(--surface); font:700 12px/1 "IBM Plex Mono", monospace; letter-spacing:.5px; }
+    .mark u{ display:grid; grid-template-columns:1fr 1fr 1fr; }
+    .mark u s:nth-child(1){ background:var(--red); } .mark u s:nth-child(2){ background:#fff; } .mark u s:nth-child(3){ background:var(--blue); }
+    .brand .name{ font-weight:800; font-size:16px; letter-spacing:-.01em; }
+    .brand .name small{ display:block; font:500 11px/1.3 "IBM Plex Mono", monospace; color:var(--faint); letter-spacing:.04em; text-transform:uppercase; }
+    .nav-right{ display:flex; align-items:center; gap:18px; font-size:13px; }
+    .status{ display:inline-flex; align-items:center; gap:7px; color:var(--muted); font:600 12px/1 "IBM Plex Mono", monospace; letter-spacing:.02em; }
+    .dot{ width:8px; height:8px; border-radius:50%; background:var(--c-environment); box-shadow:0 0 0 3px color-mix(in srgb, var(--c-environment) 22%, transparent); }
+    .ghlink{ color:var(--ink); font-weight:600; }
 
-    .header-inner, main, footer {
-      width: min(1120px, calc(100% - 40px));
-      margin: 0 auto;
+    /* Hero */
+    .hero{ background:var(--surface); border-bottom:1px solid var(--line); }
+    .hero-inner{ display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,460px); gap:56px; align-items:end; padding:52px 0 46px; }
+    .eyebrow{ margin:0 0 16px; display:inline-flex; align-items:center; gap:10px; color:var(--red); font:700 12px/1 "IBM Plex Mono", monospace; letter-spacing:.14em; text-transform:uppercase; }
+    .eyebrow::before{ content:"§"; color:var(--faint); font-weight:600; }
+    h1{ margin:0; font-size:clamp(38px, 6vw, 66px); font-weight:800; line-height:.96; letter-spacing:-.025em; max-width:12ch; }
+    h1 em{ font-style:normal; color:var(--muted); }
+    .lede{ margin:22px 0 0; max-width:56ch; color:var(--muted); font-size:18px; }
+
+    .endpoint-block{ min-width:0; }
+    .field-label{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:9px; }
+    .field-label span{ font:700 11px/1 "IBM Plex Mono", monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+    .field-label em{ font-style:normal; font:500 11px/1 "IBM Plex Mono", monospace; color:var(--faint); }
+    .endpoint{ display:flex; min-width:0; background:var(--panel); border-radius:var(--radius); overflow:hidden; box-shadow:0 1px 0 rgba(0,0,0,.04); }
+    .endpoint code{ flex:1; min-width:0; padding:15px 16px; color:var(--panel-ink); font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .copy{ flex:none; border:0; border-left:1px solid var(--panel-line); background:transparent; color:var(--panel-ink); padding:0 18px; font:600 12px/1 "IBM Plex Mono", monospace; letter-spacing:.06em; text-transform:uppercase; transition:background .12s; }
+    .copy:hover{ background:rgba(255,255,255,.07); }
+    .copy[data-done="true"]{ color:var(--c-environment); }
+
+    .metrics{ display:flex; gap:0; margin-top:18px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--surface-2); }
+    .metrics div{ flex:1; padding:12px 14px; border-right:1px solid var(--line); }
+    .metrics div:last-child{ border-right:0; }
+    .metrics strong{ display:block; font-size:22px; font-weight:800; letter-spacing:-.02em; line-height:1; }
+    .metrics span{ display:block; margin-top:5px; font:500 11px/1.3 "IBM Plex Mono", monospace; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+
+    /* Control bar */
+    .catalogue{ padding:0 0 72px; }
+    .section-head{ padding:34px 0 20px; display:flex; align-items:baseline; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+    .section-head h2{ margin:0; font-size:15px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; display:flex; align-items:baseline; gap:12px; }
+    .section-head h2 .no{ font:600 12px/1 "IBM Plex Mono", monospace; color:var(--faint); letter-spacing:.08em; }
+    .count{ font:500 12px/1 "IBM Plex Mono", monospace; color:var(--muted); letter-spacing:.02em; }
+    .count b{ color:var(--ink); font-weight:700; }
+
+    .controls{ position:sticky; top:0; z-index:20; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:saturate(1.1) blur(8px); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:22px; }
+    .search-row{ display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line-2); border-radius:var(--radius); padding:0 12px; height:44px; }
+    .search-row .glyph{ color:var(--faint); font:600 13px/1 "IBM Plex Mono", monospace; }
+    .search{ flex:1; min-width:0; height:100%; border:0; background:transparent; font-size:15px; }
+    .search::placeholder{ color:var(--faint); }
+    .search:focus{ outline:none; }
+    .filters{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .filter{
+      display:inline-flex; align-items:center; gap:8px; min-height:34px; padding:0 12px;
+      border:1px solid var(--line-2); border-radius:999px; background:var(--surface); color:var(--muted);
+      font-weight:600; font-size:13px; letter-spacing:.01em; transition:border-color .12s, color .12s, background .12s;
     }
+    .filter:hover{ color:var(--ink); border-color:var(--ink); }
+    .filter .swatch{ width:8px; height:8px; border-radius:2px; background:var(--chip, var(--faint)); flex:none; }
+    .filter .n{ font:600 11px/1 "IBM Plex Mono", monospace; color:var(--faint); }
+    .filter[aria-pressed="true"]{ background:var(--ink); border-color:var(--ink); color:var(--surface); }
+    .filter[aria-pressed="true"] .n{ color:color-mix(in srgb, var(--surface) 65%, var(--ink)); }
+    .filter[data-filter="all"] .swatch{ display:none; }
 
-    .nav {
-      min-height: 68px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
+    /* Grid + cards */
+    .tool-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(288px, 1fr)); gap:12px; }
+    .tool-card{
+      --source-color:var(--blue);
+      min-width:0; display:flex; flex-direction:column; padding:18px 18px 16px 20px;
+      background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--source-color);
+      border-radius:var(--radius); position:relative;
     }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-weight: 760;
-      font-size: 17px;
-    }
-
-    .brand-mark {
-      width: 30px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      background: var(--ink);
-      color: white;
-      border-radius: 4px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--green);
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 0 3px #d9eee5;
-    }
-
-    .intro {
-      padding: 54px 0 42px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
-      gap: 64px;
-      align-items: end;
-    }
-
-    .eyebrow {
-      margin: 0 0 12px;
-      color: var(--red);
-      font-size: 12px;
-      font-weight: 800;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      margin: 0;
-      max-width: 720px;
-      font-size: clamp(40px, 6vw, 72px);
-      line-height: .98;
-      letter-spacing: 0;
-    }
-
-    .lede {
-      margin: 22px 0 0;
-      max-width: 660px;
-      color: var(--muted);
-      font-size: 18px;
-    }
-
-    .endpoint-block { min-width: 0; }
-
-    .endpoint-label {
-      display: block;
-      margin-bottom: 8px;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .endpoint {
-      display: flex;
-      min-width: 0;
-      background: #11191e;
-      border: 1px solid #11191e;
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-
-    .endpoint code {
-      min-width: 0;
-      flex: 1;
-      padding: 14px;
-      color: #dce9ee;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 13px;
-    }
-
-    .copy-button {
-      border: 0;
-      border-left: 1px solid #3a454b;
-      background: #253139;
-      color: white;
-      padding: 0 16px;
-      font-size: 13px;
-      font-weight: 750;
-    }
-
-    .copy-button:hover { background: #34434c; }
-    .copy-button:focus-visible, .filter:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
-
-    .metrics {
-      display: flex;
-      gap: 26px;
-      margin-top: 18px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .metrics strong { color: var(--ink); }
-
-    main { padding: 34px 0 70px; }
-
-    .catalogue-head {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 22px;
-    }
-
-    h2 { margin: 0; font-size: 26px; letter-spacing: 0; }
-
-    .search {
-      width: min(100%, 360px);
-      height: 42px;
-      padding: 0 13px;
-      border: 1px solid #b9c2c7;
-      border-radius: var(--radius);
-      background: var(--paper);
-      color: var(--ink);
-    }
-
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-
-    .filter {
-      min-height: 34px;
-      padding: 0 12px;
-      border: 1px solid #b9c2c7;
-      border-radius: 999px;
-      background: transparent;
-      color: #3d494f;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .filter[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: white; }
-
-    .tool-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .tool-card {
-      min-width: 0;
-      min-height: 182px;
-      display: flex;
-      flex-direction: column;
-      padding: 20px;
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-top: 3px solid var(--source-color, var(--blue));
-      border-radius: var(--radius);
-    }
-
     .tool-card[hidden] { display: none; }
+    .tool-card[data-source="catalog"]{ --source-color:var(--c-catalog); }
+    .tool-card[data-source="geo"]{ --source-color:var(--c-geo); }
+    .tool-card[data-source="government"]{ --source-color:var(--c-government); }
+    .tool-card[data-source="mobility"]{ --source-color:var(--c-mobility); }
+    .tool-card[data-source="environment"]{ --source-color:var(--c-environment); }
+    .tool-card[data-source="statistics"]{ --source-color:var(--c-statistics); }
 
-    .tool-card[data-source="catalog"] { --source-color: var(--red); }
-    .tool-card[data-source="geo"] { --source-color: var(--blue); }
-    .tool-card[data-source="environment"] { --source-color: var(--green); }
-    .tool-card[data-source="mobility"] { --source-color: #d28b16; }
-    .tool-card[data-source="government"] { --source-color: #7a52a1; }
-    .tool-card[data-source="statistics"] { --source-color: #2d6472; }
+    .tool-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+    .source-name{ display:inline-flex; align-items:center; gap:7px; min-width:0; font:600 11px/1.2 "IBM Plex Mono", monospace; letter-spacing:.02em; text-transform:uppercase; color:var(--source-color); }
+    .source-name::before{ content:""; width:7px; height:7px; border-radius:2px; background:var(--source-color); flex:none; }
+    .source-name b{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .keyless{ flex:none; font:600 10px/1 "IBM Plex Mono", monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); border:1px solid var(--line-2); border-radius:3px; padding:4px 6px; }
+    .tool-card h3{ margin:0 0 8px; font:600 17px/1.2 "IBM Plex Mono", monospace; letter-spacing:-.01em; overflow-wrap:anywhere; }
+    .tool-card p{ margin:0; color:var(--muted); font-size:14px; }
+    .arguments{ margin-top:auto; padding-top:16px; color:var(--faint); font:500 12px/1.5 "IBM Plex Mono", monospace; overflow-wrap:anywhere; }
+    .arguments::before{ content:"args "; color:color-mix(in srgb, var(--faint) 70%, transparent); }
 
-    .tool-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 18px;
-      color: var(--muted);
-      font-size: 12px;
+    .empty{ display:none; padding:56px 0; text-align:center; color:var(--muted); font-size:15px; }
+    .empty b{ color:var(--ink); }
+
+    /* Connect */
+    .connect{ background:var(--surface); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .connect-inner{ display:grid; grid-template-columns:minmax(0,0.85fr) minmax(340px,1fr); gap:56px; align-items:start; padding:52px 0; }
+    .connect h2{ margin:0 0 14px; font-size:26px; font-weight:800; letter-spacing:-.02em; }
+    .connect p{ margin:0 0 14px; color:var(--muted); max-width:52ch; }
+    .steps{ margin:20px 0 0; padding:0; list-style:none; counter-reset:s; display:grid; gap:12px; }
+    .steps li{ counter-increment:s; padding-left:34px; position:relative; color:var(--muted); font-size:14px; }
+    .steps li::before{ content:counter(s,decimal-leading-zero); position:absolute; left:0; top:0; font:600 12px/1.4 "IBM Plex Mono", monospace; color:var(--red); }
+    .steps b{ color:var(--ink); font-weight:600; }
+    .code-panel{ background:var(--panel); border-radius:var(--radius); overflow:hidden; }
+    .code-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 14px; border-bottom:1px solid var(--panel-line); }
+    .code-head span{ font:600 11px/1 "IBM Plex Mono", monospace; letter-spacing:.1em; text-transform:uppercase; color:color-mix(in srgb, var(--panel-ink) 60%, transparent); }
+    .code-panel pre{ margin:0; padding:16px; overflow-x:auto; color:var(--panel-ink); font:500 13px/1.65 "IBM Plex Mono", monospace; }
+    .code-panel .k{ color:var(--blue); } .code-panel .s{ color:#8fd4a3; } .code-panel .p{ color:color-mix(in srgb, var(--panel-ink) 55%, transparent); }
+
+    /* Footer */
+    footer{ padding:26px 0 44px; }
+    .footer-inner{ display:flex; justify-content:space-between; gap:24px; color:var(--faint); font:500 12px/1.6 "IBM Plex Mono", monospace; }
+    .footer-inner p{ margin:0; max-width:64ch; }
+
+    @media (max-width:840px){
+      .hero-inner{ grid-template-columns:1fr; gap:32px; padding:40px 0 34px; }
+      .connect-inner{ grid-template-columns:1fr; gap:32px; padding:40px 0; }
     }
-
-    .source-name { font-weight: 750; }
-
-    .keyless {
-      color: var(--green);
-      font-weight: 750;
+    @media (max-width:560px){
+      .wrap{ width:calc(100% - 32px); }
+      .ghlink{ display:none; }
+      .lede{ font-size:16px; }
+      .metrics{ flex-wrap:wrap; }
+      .metrics div{ flex:1 1 33%; }
+      .tool-grid{ grid-template-columns:1fr; }
+      .brand .name small{ display:none; }
     }
-
-    .tool-card h3 {
-      margin: 0 0 9px;
-      overflow-wrap: anywhere;
-      font: 700 16px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
-      letter-spacing: 0;
+    @media (max-width:380px){
+      .wrap{ width:calc(100% - 24px); }
+      .status span{ display:none; }
     }
-
-    .tool-card p { margin: 0; color: var(--muted); font-size: 14px; }
-
-    .tool-card .arguments {
-      margin-top: auto;
-      padding-top: 18px;
-      color: #77838a;
-      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-      overflow-wrap: anywhere;
-    }
-
-    .empty {
-      display: none;
-      padding: 44px 0;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    footer {
-      padding: 28px 0 38px;
-      border-top: 1px solid var(--line);
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    footer p { margin: 0; max-width: 700px; }
-
-    @media (max-width: 760px) {
-      .header-inner, main, footer { width: min(100% - 24px, 1120px); }
-      .intro { grid-template-columns: 1fr; gap: 28px; padding: 38px 0 32px; }
-      h1 { font-size: 44px; }
-      .lede { font-size: 16px; }
-      .catalogue-head { align-items: stretch; flex-direction: column; }
-      .search { width: 100%; }
-      .tool-grid { grid-template-columns: 1fr; }
-      footer { flex-direction: column; }
-    }
-
-    @media (max-width: 420px) {
-      .status span:last-child { display: none; }
-      .metrics { gap: 14px; flex-wrap: wrap; }
-      .endpoint code { font-size: 11px; }
-    }
+    @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
   </style>
 </head>
 <body>
+  <div class="tricolor" aria-hidden="true"><i></i><i></i><i></i></div>
+
   <header>
-    <div class="flag-line" aria-hidden="true"><span></span><span></span><span></span></div>
-    <div class="header-inner">
-      <nav class="nav" aria-label="Main navigation">
-        <div class="brand"><span class="brand-mark" aria-hidden="true">LU</span> Luxembourg MCP</div>
-        <div class="status"><span class="status-dot" aria-hidden="true"></span><span>Keyless public data</span></div>
+    <div class="wrap">
+      <nav class="nav" aria-label="Main">
+        <div class="brand">
+          <span class="mark" aria-hidden="true"><b>LU</b><u><s></s><s></s><s></s></u></span>
+          <span class="name">Luxembourg MCP<small>Official open data · keyless</small></span>
+        </div>
+        <div class="nav-right">
+          <span class="status"><span class="dot" aria-hidden="true"></span><span>Server running</span></span>
+          <a class="ghlink" href="https://github.com/amirdaraee/luxembourg-mcp" rel="noopener">View on GitHub</a>
+        </div>
       </nav>
-      <section class="intro">
-        <div>
-          <p class="eyebrow">Official sources, agent-ready</p>
-          <h1>Luxembourg public data over MCP</h1>
-          <p class="lede">One endpoint for laws, statistics, mobility, addresses, environment, parliament, and the national open-data catalogue. No account or API key required.</p>
-        </div>
-        <div class="endpoint-block">
-          <span class="endpoint-label">MCP endpoint</span>
-          <div class="endpoint">
-            <code id="endpoint">http://127.0.0.1:8000/mcp</code>
-            <button class="copy-button" id="copy" type="button">Copy</button>
-          </div>
-          <div class="metrics"><span><strong>21</strong> tools</span><span><strong>15</strong> official systems</span><span><strong>0</strong> API keys</span></div>
-        </div>
-      </section>
     </div>
   </header>
 
-  <main>
-    <div class="catalogue-head">
-      <div><p class="eyebrow">Catalogue</p><h2>Available tools</h2></div>
-      <input class="search" id="search" type="search" placeholder="Search tools and sources" aria-label="Search tools and sources">
+  <section class="hero">
+    <div class="wrap hero-inner">
+      <div>
+        <p class="eyebrow">Model Context Protocol server</p>
+        <h1>Luxembourg public data, <em>ready for agents.</em></h1>
+        <p class="lede">One keyless endpoint over laws, statistics, mobility, addresses, environment, and parliament — every response traced to its official Luxembourg source. No account, no API key.</p>
+      </div>
+      <div class="endpoint-block">
+        <div class="field-label"><span>MCP endpoint</span><em>from window.location</em></div>
+        <div class="endpoint">
+          <code id="endpoint">http://127.0.0.1:8000/mcp</code>
+          <button class="copy" id="copy" type="button" aria-label="Copy MCP endpoint URL">Copy</button>
+        </div>
+        <div class="metrics">
+          <div><strong>21</strong><span>tools</span></div>
+          <div><strong>15</strong><span>official systems</span></div>
+          <div><strong>0</strong><span>API keys</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="wrap catalogue">
+    <div class="section-head">
+      <h2><span class="no">01</span> Tool catalogue</h2>
+      <p class="count">Showing <b id="shown">21</b> of 21 tools</p>
     </div>
 
-    <div class="filters" aria-label="Filter tools by domain">
-      <button class="filter" type="button" data-filter="all" aria-pressed="true">All sources</button>
-      <button class="filter" type="button" data-filter="government" aria-pressed="false">Government</button>
-      <button class="filter" type="button" data-filter="mobility" aria-pressed="false">Mobility</button>
-      <button class="filter" type="button" data-filter="environment" aria-pressed="false">Environment</button>
-      <button class="filter" type="button" data-filter="statistics" aria-pressed="false">Statistics</button>
-      <button class="filter" type="button" data-filter="geo" aria-pressed="false">Geospatial</button>
-      <button class="filter" type="button" data-filter="catalog" aria-pressed="false">Open data</button>
+    <div class="controls">
+      <div class="search-row">
+        <span class="glyph" aria-hidden="true">⌕</span>
+        <input class="search" id="search" type="search" placeholder="Search tools, sources, arguments…" aria-label="Search tools and sources">
+      </div>
+      <div class="filters" role="group" aria-label="Filter tools by source system">
+        <button class="filter" type="button" data-filter="all" aria-pressed="true">All sources<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="government" aria-pressed="false" style="--chip:var(--c-government)"><span class="swatch" aria-hidden="true"></span>Government<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="mobility" aria-pressed="false" style="--chip:var(--c-mobility)"><span class="swatch" aria-hidden="true"></span>Mobility<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="environment" aria-pressed="false" style="--chip:var(--c-environment)"><span class="swatch" aria-hidden="true"></span>Environment<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="statistics" aria-pressed="false" style="--chip:var(--c-statistics)"><span class="swatch" aria-hidden="true"></span>Statistics<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="geo" aria-pressed="false" style="--chip:var(--c-geo)"><span class="swatch" aria-hidden="true"></span>Geospatial<span class="n"></span></button>
+        <button class="filter" type="button" data-filter="catalog" aria-pressed="false" style="--chip:var(--c-catalog)"><span class="swatch" aria-hidden="true"></span>Open data<span class="n"></span></button>
+      </div>
     </div>
 
     <section class="tool-grid" id="tools" aria-live="polite">
-      <article class="tool-card" data-source="catalog"><div class="tool-meta"><span class="source-name">data.public.lu</span><span class="keyless">Keyless</span></div><h3>search_datasets</h3><p>Search Luxembourg's national open-data catalogue.</p><span class="arguments">query · page? · page_size?</span></article>
-      <article class="tool-card" data-source="catalog"><div class="tool-meta"><span class="source-name">data.public.lu</span><span class="keyless">Keyless</span></div><h3>get_dataset</h3><p>Inspect metadata, licences, and current resource downloads.</p><span class="arguments">dataset_id_or_slug</span></article>
-      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail</span><span class="keyless">Keyless</span></div><h3>geocode_address</h3><p>Resolve an official Luxembourg address to coordinates.</p><span class="arguments">query</span></article>
-      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail</span><span class="keyless">Keyless</span></div><h3>reverse_geocode</h3><p>Find the nearest official address to WGS84 coordinates.</p><span class="arguments">latitude · longitude</span></article>
-      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail OGC</span><span class="keyless">Keyless</span></div><h3>list_geo_collections</h3><p>Discover queryable official geospatial collections.</p><span class="arguments">query? · limit?</span></article>
-      <article class="tool-card" data-source="geo"><div class="tool-meta"><span class="source-name">Geoportail OGC</span><span class="keyless">Keyless</span></div><h3>get_geo_features</h3><p>Retrieve bounded GeoJSON features from a collection.</p><span class="arguments">collection_id · limit? · bbox?</span></article>
-      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">MeteoLux</span><span class="keyless">Keyless</span></div><h3>get_weather_alerts</h3><p>Read current official weather warnings in four languages.</p><span class="arguments">language? en · fr · de · lu</span></article>
-      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Legilux</span><span class="keyless">Keyless</span></div><h3>search_legislation</h3><p>Search legislation and consolidated laws by title.</p><span class="arguments">query · limit?</span></article>
-      <article class="tool-card" data-source="statistics"><div class="tool-meta"><span class="source-name">STATEC LUSTAT</span><span class="keyless">Keyless</span></div><h3>search_statistics</h3><p>Discover official statistical dataflows by topic.</p><span class="arguments">query · limit?</span></article>
-      <article class="tool-card" data-source="statistics"><div class="tool-meta"><span class="source-name">STATEC LUSTAT</span><span class="keyless">Keyless</span></div><h3>get_statistics</h3><p>Retrieve recent labelled observations through SDMX.</p><span class="arguments">dataflow_id · key? · last_n_observations?</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Ville de Luxembourg</span><span class="keyless">Keyless</span></div><h3>get_city_parking</h3><p>Get live car-park capacity, free spaces, and status.</p><span class="arguments">query? · available_only?</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CFL</span><span class="keyless">Keyless</span></div><h3>list_cfl_parking</h3><p>List CFL Park and Ride facilities and capacities.</p><span class="arguments">no arguments</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CFL</span><span class="keyless">Keyless</span></div><h3>get_cfl_parking</h3><p>Get live occupancy and free spaces for one P+R.</p><span class="arguments">parking_id</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">CITA</span><span class="keyless">Keyless</span></div><h3>get_traffic</h3><p>Read motorway speed, flow, and occupancy sensors.</p><span class="arguments">road? a3 · a4 · a6 · a7 · a13 · b40</span></article>
-      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">Administration de la gestion de l'eau</span><span class="keyless">Keyless</span></div><h3>get_water_levels</h3><p>Get the latest measurements from national water stations.</p><span class="arguments">station?</span></article>
-      <article class="tool-card" data-source="environment"><div class="tool-meta"><span class="source-name">Administration de l'environnement</span><span class="keyless">Keyless</span></div><h3>get_air_quality</h3><p>Read the latest national telemetric pollution measurements.</p><span class="arguments">city?</span></article>
-      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Chambre des Députés</span><span class="keyless">Keyless</span></div><h3>search_chamber_bodies</h3><p>Search committees, delegations, memberships, and roles.</p><span class="arguments">query · limit?</span></article>
-      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Accessibility Observatory</span><span class="keyless">Keyless</span></div><h3>get_accessibility_figures</h3><p>Get national website, app, statement, and audit totals.</p><span class="arguments">no arguments</span></article>
-      <article class="tool-card" data-source="government"><div class="tool-meta"><span class="source-name">Accessibility Observatory</span><span class="keyless">Keyless</span></div><h3>get_accessibility_audits</h3><p>List recent public-sector digital accessibility audits.</p><span class="arguments">limit?</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Administration des transports publics</span><span class="keyless">Keyless</span></div><h3>search_transit_stops</h3><p>Search nationwide bus, rail, and tram stops in GTFS.</p><span class="arguments">query · limit?</span></article>
-      <article class="tool-card" data-source="mobility"><div class="tool-meta"><span class="source-name">Ville de Luxembourg Maps</span><span class="keyless">Keyless</span></div><h3>get_city_mobility</h3><p>Get parking, P+R, P+B, and bike-rental GeoJSON.</p><span class="arguments">category</span></article>
+      <article class="tool-card" data-source="catalog"><div class="tool-top"><span class="source-name"><b>data.public.lu</b></span><span class="keyless">Keyless</span></div><h3>search_datasets</h3><p>Search Luxembourg's national open-data catalogue.</p><span class="arguments">query · page? · page_size?</span></article>
+      <article class="tool-card" data-source="catalog"><div class="tool-top"><span class="source-name"><b>data.public.lu</b></span><span class="keyless">Keyless</span></div><h3>get_dataset</h3><p>Inspect metadata, licences, and current resource downloads.</p><span class="arguments">dataset_id_or_slug</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-top"><span class="source-name"><b>Geoportail</b></span><span class="keyless">Keyless</span></div><h3>geocode_address</h3><p>Resolve an official Luxembourg address to coordinates.</p><span class="arguments">query</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-top"><span class="source-name"><b>Geoportail</b></span><span class="keyless">Keyless</span></div><h3>reverse_geocode</h3><p>Find the nearest official address to WGS84 coordinates.</p><span class="arguments">latitude · longitude</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-top"><span class="source-name"><b>Geoportail OGC</b></span><span class="keyless">Keyless</span></div><h3>list_geo_collections</h3><p>Discover queryable official geospatial collections.</p><span class="arguments">query? · limit?</span></article>
+      <article class="tool-card" data-source="geo"><div class="tool-top"><span class="source-name"><b>Geoportail OGC</b></span><span class="keyless">Keyless</span></div><h3>get_geo_features</h3><p>Retrieve bounded GeoJSON features from a collection.</p><span class="arguments">collection_id · limit? · bbox?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>MeteoLux</b></span><span class="keyless">Keyless</span></div><h3>get_weather_alerts</h3><p>Read current official weather warnings in four languages.</p><span class="arguments">language? en · fr · de · lu</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Legilux</b></span><span class="keyless">Keyless</span></div><h3>search_legislation</h3><p>Search legislation and consolidated laws by title.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>STATEC LUSTAT</b></span><span class="keyless">Keyless</span></div><h3>search_statistics</h3><p>Discover official statistical dataflows by topic.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>STATEC LUSTAT</b></span><span class="keyless">Keyless</span></div><h3>get_statistics</h3><p>Retrieve recent labelled observations through SDMX.</p><span class="arguments">dataflow_id · key? · last_n_observations?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Ville de Luxembourg</b></span><span class="keyless">Keyless</span></div><h3>get_city_parking</h3><p>Get live car-park capacity, free spaces, and status.</p><span class="arguments">query? · available_only?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CFL</b></span><span class="keyless">Keyless</span></div><h3>list_cfl_parking</h3><p>List CFL Park and Ride facilities and capacities.</p><span class="arguments">no arguments</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CFL</b></span><span class="keyless">Keyless</span></div><h3>get_cfl_parking</h3><p>Get live occupancy and free spaces for one P+R.</p><span class="arguments">parking_id</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CITA</b></span><span class="keyless">Keyless</span></div><h3>get_traffic</h3><p>Read motorway speed, flow, and occupancy sensors.</p><span class="arguments">road? a3 · a4 · a6 · a7 · a13 · b40</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>Gestion de l'eau</b></span><span class="keyless">Keyless</span></div><h3>get_water_levels</h3><p>Get the latest measurements from national water stations.</p><span class="arguments">station?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>Environnement</b></span><span class="keyless">Keyless</span></div><h3>get_air_quality</h3><p>Read the latest national telemetric pollution measurements.</p><span class="arguments">city?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Chambre des Députés</b></span><span class="keyless">Keyless</span></div><h3>search_chamber_bodies</h3><p>Search committees, delegations, memberships, and roles.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Accessibility Observatory</b></span><span class="keyless">Keyless</span></div><h3>get_accessibility_figures</h3><p>Get national website, app, statement, and audit totals.</p><span class="arguments">no arguments</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Accessibility Observatory</b></span><span class="keyless">Keyless</span></div><h3>get_accessibility_audits</h3><p>List recent public-sector digital accessibility audits.</p><span class="arguments">limit?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Transports publics</b></span><span class="keyless">Keyless</span></div><h3>search_transit_stops</h3><p>Search nationwide bus, rail, and tram stops in GTFS.</p><span class="arguments">query · limit?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Ville de Luxembourg Maps</b></span><span class="keyless">Keyless</span></div><h3>get_city_mobility</h3><p>Get parking, P+R, P+B, and bike-rental GeoJSON.</p><span class="arguments">category</span></article>
     </section>
-    <p class="empty" id="empty">No tools match this search.</p>
+    <p class="empty" id="empty">No tools match <b id="empty-q">this search</b>.</p>
   </main>
 
+  <section class="connect">
+    <div class="wrap connect-inner">
+      <div>
+        <h2>How to connect</h2>
+        <p>The server speaks standard MCP over HTTP. Point any MCP-capable client at the endpoint above — the URL is read from the browser, so it matches wherever you're running it.</p>
+        <ol class="steps">
+          <li>Copy the config into your client's <b>MCP servers</b> settings.</li>
+          <li>Reload the client so it discovers all <b>21</b> tools across <strong>15</strong> official systems.</li>
+          <li>Ask your agent for anything Luxembourg — <b>no key required</b>.</li>
+        </ol>
+      </div>
+      <div class="code-panel">
+        <div class="code-head"><span>mcp.json</span><button class="copy" id="copy-config" type="button" aria-label="Copy client config">Copy</button></div>
+<pre id="config"><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="k">"luxembourg"</span><span class="p">:</span> <span class="p">{</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"<span id="config-endpoint">http://127.0.0.1:8000/mcp</span>"</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+      </div>
+    </div>
+  </section>
+
   <footer>
-    <p>Independent project. Not affiliated with the Luxembourg government or its agencies. Each response preserves its official upstream source.</p>
-    <p>MCP 2025-11-25</p>
+    <div class="wrap footer-inner">
+      <p>Independent project. Not affiliated with the Luxembourg government or its agencies. Each response preserves its official upstream source.</p>
+      <p>MCP 2025-11-25</p>
+    </div>
   </footer>
 
   <script>
-    const endpoint = `${window.location.origin}/mcp`;
-    const endpointNode = document.querySelector('#endpoint');
-    const copyButton = document.querySelector('#copy');
+    const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
+    const isLocal = localHosts.includes(window.location.hostname);
+    const endpoint = isLocal ? `${window.location.origin}/mcp` : 'http://127.0.0.1:8000/mcp';
+    if (isLocal) {
+      document.querySelector('#endpoint').textContent = endpoint;
+    } else {
+      document.querySelector('.field-label span').textContent = 'Run it locally';
+      document.querySelector('.field-label em').textContent = 'then connect on port 8000';
+      document.querySelector('#endpoint').textContent = 'uvx luxembourg-mcp --transport http';
+      document.querySelector('.status span:last-child').textContent = 'Keyless public data';
+    }
+    document.querySelector('#config-endpoint').textContent = endpoint;
+
     const search = document.querySelector('#search');
     const cards = [...document.querySelectorAll('.tool-card')];
     const filters = [...document.querySelectorAll('.filter')];
     const empty = document.querySelector('#empty');
+    const shown = document.querySelector('#shown');
+    const emptyQ = document.querySelector('#empty-q');
     let activeFilter = 'all';
 
-    const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
-    if (localHosts.includes(window.location.hostname)) {
-      endpointNode.textContent = endpoint;
-    } else {
-      document.querySelector('.endpoint-label').textContent = 'Run it locally';
-      endpointNode.textContent = 'uvx luxembourg-mcp';
+    // Copy buttons
+    function wireCopy(btn, getText){
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(getText()); } catch (e) {}
+        const label = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.dataset.done = 'true';
+        window.setTimeout(() => { btn.textContent = label; btn.dataset.done = 'false'; }, 1400);
+      });
     }
+    wireCopy(document.querySelector('#copy'), () => document.querySelector('#endpoint').textContent);
+    wireCopy(document.querySelector('#copy-config'), () =>
+      `{\n  "mcpServers": {\n    "luxembourg": {\n      "url": "${endpoint}"\n    }\n  }\n}`);
 
-    copyButton.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(endpointNode.textContent);
-      copyButton.textContent = 'Copied';
-      window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1400);
+    // Per-source counts on filter chips
+    filters.forEach((btn) => {
+      const f = btn.dataset.filter;
+      const n = f === 'all' ? cards.length : cards.filter((c) => c.dataset.source === f).length;
+      btn.querySelector('.n').textContent = n;
     });
 
-    function updateTools() {
+    function updateTools(){
       const query = search.value.trim().toLowerCase();
       let visible = 0;
       cards.forEach((card) => {
@@ -434,7 +369,9 @@
         card.hidden = !show;
         if (show) visible += 1;
       });
+      shown.textContent = visible;
       empty.style.display = visible ? 'none' : 'block';
+      if (!visible) emptyQ.textContent = query ? `"${search.value.trim()}"` : 'this filter';
     }
 
     filters.forEach((button) => {
@@ -444,7 +381,6 @@
         updateTools();
       });
     });
-
     search.addEventListener('input', updateTools);
   </script>
 </body>
