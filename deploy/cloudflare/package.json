@@ -1,0 +1,14 @@
+{
+  "name": "luxembourg-mcp-cloudflare",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.28"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

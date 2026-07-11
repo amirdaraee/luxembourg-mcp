@@ -163,6 +163,78 @@ class SecurityTests(unittest.TestCase):
             with self.subTest(origin=origin):
                 self.assertFalse(_origin_is_local(origin))
 
+    def test_allowed_origins_env_permits_configured_origin(self):
+        body = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
+        with patch.dict("os.environ", {"LUXEMBOURG_MCP_ALLOWED_ORIGINS": "https://luxembourg-mcp.com"}):
+            server = McpServer().create_http_server("127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            statuses = {}
+            for origin in ("https://luxembourg-mcp.com", "https://evil.example"):
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                connection.request("POST", "/mcp", body=body, headers={"Content-Type": "application/json", "Origin": origin})
+                response = connection.getresponse()
+                statuses[origin] = response.status
+                response.read()
+                connection.close()
+            self.assertEqual(statuses["https://luxembourg-mcp.com"], 200)
+            self.assertEqual(statuses["https://evil.example"], 403)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_client_ip_header_buckets_rate_limit_per_forwarded_ip(self):
+        body = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
+        env = {"LUXEMBOURG_MCP_RATE_LIMIT": "1", "LUXEMBOURG_MCP_CLIENT_IP_HEADER": "CF-Connecting-IP"}
+        with patch.dict("os.environ", env):
+            server = McpServer().create_http_server("127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            statuses = []
+            for forwarded in ("198.51.100.1", "198.51.100.2", "198.51.100.1"):
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                connection.request("POST", "/mcp", body=body, headers={"Content-Type": "application/json", "CF-Connecting-IP": forwarded})
+                response = connection.getresponse()
+                statuses.append(response.status)
+                response.read()
+                connection.close()
+            self.assertEqual(statuses, [200, 200, 429])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_cors_preflight_and_response_headers_for_allowed_origin(self):
+        body = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
+        with patch.dict("os.environ", {"LUXEMBOURG_MCP_ALLOWED_ORIGINS": "*"}):
+            server = McpServer().create_http_server("127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            connection.request("OPTIONS", "/mcp", headers={"Origin": "https://claude.ai"})
+            preflight = connection.getresponse()
+            preflight.read()
+            self.assertEqual(preflight.status, 204)
+            self.assertEqual(preflight.getheader("Access-Control-Allow-Origin"), "https://claude.ai")
+            self.assertIn("POST", preflight.getheader("Access-Control-Allow-Methods"))
+            connection.close()
+
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            connection.request("POST", "/mcp", body=body, headers={"Content-Type": "application/json", "Origin": "https://claude.ai"})
+            response = connection.getresponse()
+            response.read()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Access-Control-Allow-Origin"), "https://claude.ai")
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_docker_runs_as_non_root_user(self):
         dockerfile = Path("Dockerfile").read_text()
         self.assertIn("USER app", dockerfile)

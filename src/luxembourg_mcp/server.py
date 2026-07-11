@@ -246,8 +246,32 @@ class McpServer:
         except ValueError:
             rate_limit = DEFAULT_RATE_LIMIT
         limiter = RateLimiter(rate_limit)
+        allowed_origins = frozenset(
+            item.strip() for item in os.environ.get("LUXEMBOURG_MCP_ALLOWED_ORIGINS", "").split(",") if item.strip()
+        )
+        # Only honor a client-IP header when explicitly configured (i.e. behind a trusted proxy);
+        # otherwise clients could spoof it to escape the rate limit.
+        client_ip_header = os.environ.get("LUXEMBOURG_MCP_CLIENT_IP_HEADER") or None
 
         class Handler(BaseHTTPRequestHandler):
+            def _origin_allowed(self, origin: str) -> bool:
+                return _origin_is_local(origin) or origin in allowed_origins or "*" in allowed_origins
+
+            def _cors_headers(self) -> dict[str, str]:
+                origin = self.headers.get("Origin")
+                if origin and self._origin_allowed(origin):
+                    return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+                return {}
+
+            def do_OPTIONS(self) -> None:
+                self.send_response(204)
+                for name, value in self._cors_headers().items():
+                    self.send_header(name, value)
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, MCP-Protocol-Version, Mcp-Session-Id")
+                self.send_header("Access-Control-Max-Age", "86400")
+                self.end_headers()
+
             def do_GET(self) -> None:
                 path = self.path.split("?", 1)[0]
                 if path == "/":
@@ -262,10 +286,11 @@ class McpServer:
                     self._send(404, {"error": "Not found"})
                     return
                 origin = self.headers.get("Origin")
-                if origin and not _origin_is_local(origin):
-                    self._send(403, {"error": "Origin is not allowed by the built-in local server"})
+                if origin and not self._origin_allowed(origin):
+                    self._send(403, {"error": "Origin is not allowed by this server"})
                     return
-                if not limiter.allow(self.client_address[0]):
+                client = (client_ip_header and self.headers.get(client_ip_header)) or self.client_address[0]
+                if not limiter.allow(client):
                     self._send(429, {"error": "Rate limit exceeded"}, {"Retry-After": "60"})
                     return
                 raw_length = self.headers.get("Content-Length")
@@ -306,7 +331,7 @@ class McpServer:
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(encoded)))
-                for name, value in (headers or {}).items():
+                for name, value in {**self._cors_headers(), **(headers or {})}.items():
                     self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(encoded)

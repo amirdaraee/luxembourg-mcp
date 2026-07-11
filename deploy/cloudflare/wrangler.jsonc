@@ -1,0 +1,36 @@
+{
+  "name": "luxembourg-mcp",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-01",
+  "containers": [
+    {
+      "class_name": "LuxembourgMcp",
+      "image": "../../Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LUXEMBOURG_MCP",
+        "class_name": "LuxembourgMcp"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LuxembourgMcp"]
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "mcp.luxembourg-mcp.com",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
