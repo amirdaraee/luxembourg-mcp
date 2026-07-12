@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Sequence
 
 from .providers import LuxembourgData
@@ -39,6 +40,35 @@ def _print_json(value: Any) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
+def _save_json(destination: Path, value: Any) -> int:
+    """Atomically replace destination with JSON and return its byte size."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary = Path(handle.name)
+        temporary.replace(destination)
+    except OSError:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    return destination.stat().st_size
+
+
 def main(argv: Sequence[str] | None = None, data: LuxembourgData | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="luxembourg-data",
@@ -52,10 +82,12 @@ def main(argv: Sequence[str] | None = None, data: LuxembourgData | None = None) 
         help="JSON object containing the tool arguments",
     )
     parser.add_argument(
+        "--output-limit",
         "--limit",
+        dest="output_limit",
         type=int,
         default=20,
-        help="Maximum items retained in each list (default: 20)",
+        help="Maximum top-level items printed (default: 20)",
     )
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
@@ -66,65 +98,71 @@ def main(argv: Sequence[str] | None = None, data: LuxembourgData | None = None) 
         action="store_true",
         help="Print metadata and counts without top-level list rows",
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--save",
         metavar="PATH",
         help="Save the complete response as JSON and print a compact receipt",
     )
     args = parser.parse_args(argv)
 
-    if not 1 <= args.limit <= 500:
-        parser.error("--limit must be between 1 and 500")
+    if not 1 <= args.output_limit <= 500:
+        parser.error("--output-limit must be between 1 and 500")
 
     server = McpServer(data)
     if args.tool == "list":
-        _print_json({
+        if args.arguments != "{}":
+            parser.error("'list' does not accept arguments")
+        value = {
             "count": len(server.tools),
             "tools": [tool.definition() for tool in server.tools.values()],
+        }
+    else:
+        if args.tool not in server.tools:
+            parser.error(f"unknown tool: {args.tool}")
+
+        try:
+            arguments = json.loads(args.arguments)
+        except json.JSONDecodeError as exc:
+            parser.error(f"arguments must be valid JSON: {exc}")
+        if not isinstance(arguments, dict):
+            parser.error("arguments must be a JSON object")
+
+        response = server.handle({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": args.tool, "arguments": arguments},
         })
-        return 0
-    if args.tool not in server.tools:
-        parser.error(f"unknown tool: {args.tool}")
-
-    try:
-        arguments = json.loads(args.arguments)
-    except json.JSONDecodeError as exc:
-        parser.error(f"arguments must be valid JSON: {exc}")
-    if not isinstance(arguments, dict):
-        parser.error("arguments must be a JSON object")
-
-    response = server.handle({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {"name": args.tool, "arguments": arguments},
-    })
-    if response is None:
-        print("Tool returned no response", file=sys.stderr)
-        return 2
-    result = response["result"]
-    if result.get("isError"):
-        print(result["content"][0]["text"], file=sys.stderr)
-        return 2
-    value = result["structuredContent"]
+        if response is None:
+            print("Tool returned no response", file=sys.stderr)
+            return 2
+        result = response["result"]
+        if result.get("isError"):
+            print(result["content"][0]["text"], file=sys.stderr)
+            return 2
+        value = result["structuredContent"]
 
     if args.save:
         destination = Path(os.path.expanduser(args.save)).resolve()
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(
-            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        receipt = compact(value, args.limit, summary_only=True)
+        try:
+            size = _save_json(destination, value)
+        except OSError as exc:
+            print(f"Could not save result to {destination}: {exc}", file=sys.stderr)
+            return 2
+        receipt = compact(value, args.output_limit, summary_only=True)
         receipt.update({
             "tool": args.tool,
             "saved": str(destination),
-            "bytes": destination.stat().st_size,
+            "bytes": size,
         })
         _print_json(receipt)
         return 0
 
-    _print_json(value if args.full else compact(value, args.limit, args.summary_only))
+    _print_json(
+        value
+        if args.full
+        else compact(value, args.output_limit, args.summary_only)
+    )
     return 0
 
 
