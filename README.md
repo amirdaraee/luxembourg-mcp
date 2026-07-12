@@ -68,6 +68,21 @@ pip install -e .
 luxembourg-mcp --transport http --port 8000
 ```
 
+### Command line
+
+The same tool registry is available without an MCP client:
+
+```bash
+luxembourg-data list
+luxembourg-data search_statistics '{"query":"population","limit":5}' --limit 5
+luxembourg-data get_city_parking '{"query":"Gare"}' --summary-only
+luxembourg-data get_statistics '{"dataflow_id":"DF_D7100"}' --save result.json
+```
+
+The command prints JSON, validates arguments against the MCP tool schemas, and
+returns source URLs from the provider. By default, lists are limited to 20 items;
+use `--limit`, `--summary-only`, `--full`, or `--save PATH` to control output size.
+
 Once running:
 
 | Interface | URL |
