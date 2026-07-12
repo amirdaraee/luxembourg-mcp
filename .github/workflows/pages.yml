@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/luxembourg_mcp/static/index.html"
+      - "site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -29,6 +30,7 @@ jobs:
         run: |
           mkdir _site
           cp src/luxembourg_mcp/static/index.html _site/index.html
+          cp site/* _site/
       - uses: actions/upload-pages-artifact@v3
       - id: deployment
         uses: actions/deploy-pages@v4

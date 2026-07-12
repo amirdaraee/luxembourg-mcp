@@ -1,0 +1,27 @@
+# Luxembourg MCP
+
+> Keyless Model Context Protocol (MCP) server for official Luxembourg public data: 27 read-only tools over 18 public systems — legislation, statistics, live mobility, environment, parliament, elections, housing prices, addresses, geodata, and the national open-data catalogue. No API keys, accounts, or scraping; every response includes its official upstream source URL.
+
+## Connect
+
+- Hosted MCP endpoint (streamable HTTP, no install): https://mcp.luxembourg-mcp.com/mcp
+- Run locally: `uvx luxembourg-mcp` (Python 3.11+, zero dependencies, MIT license)
+- Client config: `{"mcpServers": {"luxembourg": {"url": "https://mcp.luxembourg-mcp.com/mcp"}}}`
+
+## Tools (27)
+
+Laws and government: search_legislation (Legilux), search_chamber_bodies, search_parliamentary_questions (Chamber of Deputies), get_election_results (2023 legislative), get_accessibility_figures, get_accessibility_audits, get_public_holidays.
+Statistics: search_statistics, get_statistics (STATEC LUSTAT SDMX), get_housing_prices (Observatoire de l'Habitat, by commune).
+Mobility: get_city_parking, list_cfl_parking, get_cfl_parking (live P+R), get_traffic (CITA motorways), search_transit_stops (GTFS), get_city_mobility, get_ev_charging (Chargy, live availability).
+Environment and weather: get_weather_alerts, get_weather_observations (MeteoLux at Findel), get_water_levels, get_air_quality.
+Geodata and addresses: geocode_address, reverse_geocode, list_geo_collections, get_geo_features (Geoportail).
+Open-data catalogue: search_datasets, get_dataset (data.public.lu).
+
+## Links
+
+- Website: https://luxembourg-mcp.com
+- Source (MIT): https://github.com/amirdaraee/luxembourg-mcp
+- PyPI: https://pypi.org/project/luxembourg-mcp/
+- MCP registry name: io.github.amirdaraee/luxembourg-mcp
+
+Independent project, not affiliated with the Luxembourg government. Data remains under each producer's license.
