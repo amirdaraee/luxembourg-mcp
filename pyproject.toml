@@ -33,6 +33,7 @@ Issues = "https://github.com/amirdaraee/luxembourg-mcp/issues"
 
 [project.scripts]
 luxembourg-mcp = "luxembourg_mcp.__main__:main"
+luxembourg-data = "luxembourg_mcp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
