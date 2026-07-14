@@ -92,7 +92,8 @@ Once running:
 
 ```bash
 docker build -t luxembourg-mcp .
-docker run --rm -p 8000:8000 luxembourg-mcp
+docker run --rm -i luxembourg-mcp                                          # stdio (default)
+docker run --rm -p 8000:8000 luxembourg-mcp --transport http --host 0.0.0.0  # HTTP
 ```
 
 ## Example questions

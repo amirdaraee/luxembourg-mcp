@@ -6,4 +6,7 @@ COPY --chown=app:app src ./src
 RUN pip install --no-cache-dir .
 USER app
 EXPOSE 8000
-CMD ["luxembourg-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+# MCP convention: stdio by default (introspection tools, Docker MCP clients).
+# Pass args for the HTTP transport, as the Cloudflare deployment does:
+#   docker run -p 8000:8000 luxembourg-mcp --transport http --host 0.0.0.0
+ENTRYPOINT ["luxembourg-mcp"]

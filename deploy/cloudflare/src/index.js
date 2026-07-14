@@ -3,6 +3,9 @@ import { Container } from "@cloudflare/containers";
 export class LuxembourgMcp extends Container {
   defaultPort = 8000;
   sleepAfter = "15m";
+  // The image defaults to the stdio transport (MCP container convention);
+  // the hosted deployment runs the HTTP transport instead.
+  entrypoint = ["luxembourg-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"];
   enableInternet = true; // the server fetches Luxembourg's public upstream APIs
   envVars = {
     LUXEMBOURG_MCP_ALLOWED_ORIGINS: "*",
