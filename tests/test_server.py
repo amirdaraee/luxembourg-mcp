@@ -361,7 +361,7 @@ class ProtocolTests(unittest.TestCase):
         page = catalog_html().decode("utf-8")
         self.assertIn("Luxembourg MCP", page)
         self.assertIn("search_datasets", page)
-        self.assertEqual(page.count('class="tool-card"'), 27)
+        self.assertEqual(page.count('class="tool-card"'), 28)
         self.assertIn("<strong>18</strong> official systems", page)
 
 
