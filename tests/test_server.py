@@ -116,6 +116,22 @@ def _xlsx_fixture():
     return buffer.getvalue()
 
 
+def _waste_fixture():
+    dataset = {
+        "id": "w", "slug": "waste-calendars", "page": "https://data.public.lu/en/datasets/waste-calendars/",
+        "resources": [{"id": "1", "title": "calendrierdechet.csv", "format": "csv",
+                       "url": "https://download.data.public.lu/resources/waste/calendrierdechet.csv"}],
+    }
+    csv_payload = (
+        '﻿"Date";"Type de collecte";"Commune";"Localité";"Rue"\n'
+        '"01/01/2020";"Verre";"Bech";"Altrier";"Am Reimergaard"\n'
+        '"03/03/2099";"Biodéchets";"Bech";;"Toutes les rues"\n'
+        '"02/02/2099";"Verre";"Bech";"Altrier";"Am Reimergaard"\n'
+        '"05/05/2099";"Verre";"Ettelbrück";;"Toutes les rues"\n'
+    ).encode("utf-8")
+    return dataset, csv_payload
+
+
 class NewProviderTests(unittest.TestCase):
     def test_weather_observations_labels_known_sensors(self):
         dataset = _dataset_fixture("json", "https://download.data.public.lu/resources/hvd/livemeteo.json")
@@ -217,6 +233,43 @@ class NewProviderTests(unittest.TestCase):
         self.assertTrue(station["available"])
         self.assertEqual(station["longitude"], 5.9806)
         self.assertEqual(station["latitude"], 49.4958)
+
+
+class WasteProviderTests(unittest.TestCase):
+    def test_waste_collections_sorts_iso_dates_and_drops_past_rows(self):
+        dataset, payload = _waste_fixture()
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("Bech")
+        self.assertEqual([item["date"] for item in result["collections"]], ["2099-02-02", "2099-03-03"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["commune"], "Bech")
+        self.assertTrue(result["source"].startswith("https://download.data.public.lu/"))
+        self.assertEqual(result["dataset"], "https://data.public.lu/en/datasets/waste-calendars/")
+
+    def test_waste_collections_matches_commune_without_accents(self):
+        dataset, payload = _waste_fixture()
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("ettelbruck")
+        self.assertEqual(result["commune"], "Ettelbrück")
+        self.assertEqual(result["count"], 1)
+
+    def test_waste_collections_street_filter_keeps_commune_wide_rows(self):
+        dataset, payload = _waste_fixture()
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("Bech", street="reimergaard")
+        self.assertEqual(
+            [(item["date"], item["street"]) for item in result["collections"]],
+            [("2099-02-02", "Am Reimergaard"), ("2099-03-03", "Toutes les rues")],
+        )
+
+    def test_waste_collections_type_filter(self):
+        dataset, payload = _waste_fixture()
+        result = LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("Bech", waste_type="verre")
+        self.assertEqual([item["type"] for item in result["collections"]], ["Verre"])
+
+    def test_waste_collections_unknown_commune_lists_valid_names(self):
+        dataset, payload = _waste_fixture()
+        with self.assertRaises(ValueError) as caught:
+            LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("Atlantis")
+        self.assertIn("Bech", str(caught.exception))
+        self.assertIn("Ettelbrück", str(caught.exception))
 
 
 class ProtocolTests(unittest.TestCase):

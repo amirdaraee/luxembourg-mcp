@@ -46,6 +46,7 @@ QUESTIONS_SLUG = "liste-des-questions-parlementaires"
 HOUSING_SLUG = "prix-annonces-des-logements-par-commune"
 ELECTIONS_SLUG = "elections-legislatives-2023-donnees-officieuses"
 CHARGY_SLUG = "bornes-de-chargement-publiques-pour-voitures-electriques"
+WASTE_SLUG = "waste-municipal-waste-collection-calendars-dechets-calendriers-municipaux-de-collecte-des-dechets"
 # The Chargy dataset's resource URL lives on my.chargy.lu and carries a key that
 # Chargy itself publishes openly in the national catalog, so no user key is needed.
 CHARGY_RESOURCE_HOSTS = DATA_PUBLIC_RESOURCE_HOSTS | {"my.chargy.lu"}
@@ -750,6 +751,57 @@ class LuxembourgData:
         if available_only:
             stations = [s for s in stations if s.get("available")]
         return {"count": len(stations), "stations": stations, "source": url, "dataset": dataset.get("page")}
+
+    def get_waste_collections(self, commune: str, street: str | None = None,
+                              waste_type: str | None = None, limit: int = 20) -> dict:
+        if not commune.strip():
+            raise ValueError("commune must not be empty")
+        limit = min(max(limit, 1), 100)
+        dataset, resource = self._dataset_resource(WASTE_SLUG, format="csv")
+        url = resource["url"]
+
+        def load() -> list[dict[str, str]]:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            return self._decode_csv(payload, delimiter=";")
+
+        rows = self._cached(f"waste:{url}", 3600, load)
+        communes = sorted({row["Commune"] for row in rows if row.get("Commune")})
+        if not communes:
+            raise UpstreamError("Waste calendar CSV had an unexpected layout")
+        needle = _fold(commune)
+        canonical = next((name for name in communes if _fold(name) == needle), None)
+        if canonical is None:
+            candidates = [name for name in communes if needle in _fold(name)]
+            if len(candidates) == 1:
+                canonical = candidates[0]
+            elif candidates:
+                raise ValueError(f"commune is ambiguous; matches: {', '.join(candidates)}")
+            else:
+                raise ValueError(f"unknown commune; valid names: {', '.join(communes)}")
+        today = datetime.now().date().isoformat()
+        street_needle = _fold(street) if street else None
+        type_needle = _fold(waste_type) if waste_type else None
+        matches = []
+        for row in rows:
+            if row.get("Commune") != canonical:
+                continue
+            try:
+                iso = datetime.strptime(row.get("Date") or "", "%d/%m/%Y").date().isoformat()
+            except ValueError:
+                continue
+            if iso < today:
+                continue
+            rue = row.get("Rue") or ""
+            # "Toutes les rues" rows apply commune-wide, so they pass any street filter.
+            if street_needle and "toutes les rues" not in _fold(rue) and street_needle not in _fold(rue):
+                continue
+            if type_needle and type_needle not in _fold(row.get("Type de collecte") or ""):
+                continue
+            matches.append({"date": iso, "type": row.get("Type de collecte"),
+                            "locality": row.get("Localité") or None, "street": rue or None})
+        matches.sort(key=lambda item: item["date"])
+        return {"commune": canonical, "count": len(matches[:limit]), "total_matches": len(matches),
+                "collections": matches[:limit], "source": url, "dataset": dataset.get("page")}
 
     def get_city_mobility(self, category: str) -> dict:
         layer = VDL_MOBILITY_LAYERS.get(category)
