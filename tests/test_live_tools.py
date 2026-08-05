@@ -117,6 +117,11 @@ class EveryToolLiveTests(unittest.TestCase):
     def test_get_ev_charging(self):
         self.assertGreaterEqual(self.call("get_ev_charging", {"query": "Esch"})["count"], 1)
 
+    def test_get_waste_collections(self):
+        data = self.call("get_waste_collections", {"commune": "Dudelange", "limit": 3})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(all(len(item["date"]) == 10 for item in data["collections"]))
+
 
 if __name__ == "__main__":
     unittest.main()
