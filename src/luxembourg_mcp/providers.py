@@ -164,17 +164,20 @@ def _dataset_summary(item: dict) -> dict:
 class LuxembourgData:
     def __init__(self, http: HttpClient | None = None):
         self.http = http or HttpClient()
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: dict[str, tuple[float, int, Any]] = {}
 
     def _cached(self, key: str, ttl: int, loader: Any) -> Any:
         cached = self._cache.get(key)
-        if cached and time.monotonic() - cached[0] < ttl:
-            return cached[1]
+        if cached and time.monotonic() - cached[0] < cached[1]:
+            return cached[2]
         value = loader()
+        now = time.monotonic()
+        for stale_key in [k for k, entry in self._cache.items() if now - entry[0] >= entry[1]]:
+            self._cache.pop(stale_key)
         if key not in self._cache and len(self._cache) >= 32:
             oldest = min(self._cache, key=lambda item: self._cache[item][0])
             self._cache.pop(oldest)
-        self._cache[key] = (time.monotonic(), value)
+        self._cache[key] = (now, ttl, value)
         return value
 
     @staticmethod
@@ -762,12 +765,13 @@ class LuxembourgData:
 
         def load() -> list[dict[str, str]]:
             payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
-            return self._decode_csv(payload, delimiter=";")
+            rows = self._decode_csv(payload, delimiter=";")
+            if not any(row.get("Commune") for row in rows):
+                raise UpstreamError("Waste calendar CSV had an unexpected layout")
+            return rows
 
         rows = self._cached(f"waste:{url}", 3600, load)
         communes = sorted({row["Commune"] for row in rows if row.get("Commune")})
-        if not communes:
-            raise UpstreamError("Waste calendar CSV had an unexpected layout")
         needle = _fold(commune)
         canonical = next((name for name in communes if _fold(name) == needle), None)
         if canonical is None:

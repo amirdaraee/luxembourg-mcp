@@ -6,6 +6,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from luxembourg_mcp.http import UpstreamError
 from luxembourg_mcp.providers import LuxembourgData
 from luxembourg_mcp.server import McpServer, catalog_html
 
@@ -270,6 +271,29 @@ class WasteProviderTests(unittest.TestCase):
             LuxembourgData(FakeHttp([dataset, payload])).get_waste_collections("Atlantis")
         self.assertIn("Bech", str(caught.exception))
         self.assertIn("Ettelbrück", str(caught.exception))
+
+    def test_waste_collections_empty_csv_raises_and_is_not_cached(self):
+        dataset = {
+            "id": "w", "slug": "waste-calendars", "page": "https://data.public.lu/en/datasets/waste-calendars/",
+            "resources": [{"id": "1", "title": "calendrierdechet.csv", "format": "csv",
+                           "url": "https://download.data.public.lu/resources/waste/calendrierdechet.csv"}],
+        }
+        empty_payload = '﻿"Date";"Type de collecte";"Commune";"Localité";"Rue"\n'.encode("utf-8")
+        data = LuxembourgData(FakeHttp([dataset, empty_payload]))
+        with self.assertRaises(UpstreamError):
+            data.get_waste_collections("Bech")
+        self.assertFalse(any(key.startswith("waste:") for key in data._cache))
+
+
+class CacheTests(unittest.TestCase):
+    def test_cached_purges_expired_entries_on_insert(self):
+        data = LuxembourgData(FakeHttp([]))
+        with patch("luxembourg_mcp.providers.time.monotonic", return_value=1000.0):
+            data._cached("a", 5, lambda: "value-a")
+        with patch("luxembourg_mcp.providers.time.monotonic", return_value=1010.0):
+            data._cached("b", 5, lambda: "value-b")
+        self.assertNotIn("a", data._cache)
+        self.assertIn("b", data._cache)
 
 
 class ProtocolTests(unittest.TestCase):
