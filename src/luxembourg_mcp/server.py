@@ -170,6 +170,7 @@ class McpServer:
                 Tool("get_housing_prices", "Get advertised housing sale prices by commune from the official Observatoire de l'Habitat.", _object_schema({"property_type": {"type": "string", "enum": ["apartment", "house"], "default": "apartment"}, "commune": {"type": "string", "description": "Optional commune-name filter"}, "year": {"type": "string", "description": "Four-digit year such as 2025; defaults to the latest"}}), source.get_housing_prices),
                 Tool("get_election_results", "Get machine-readable 2023 legislative election results, national and per circonscription.", _object_schema({}), source.get_election_results),
                 Tool("get_ev_charging", "Get Chargy public EV charging stations with live connector availability.", _object_schema({"query": {"type": "string", "description": "Optional name or address filter"}, "available_only": {"type": "boolean", "default": False}}), source.get_ev_charging),
+                Tool("get_waste_collections", "Get upcoming municipal waste-collection dates for a Luxembourg commune.", _object_schema({"commune": {"type": "string"}, "street": {"type": "string", "description": "Optional street-name filter; commune-wide rows always match"}, "waste_type": {"type": "string", "description": "Optional collection-type filter such as verre, papier, biodechets"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}, ["commune"]), source.get_waste_collections),
             ]
         }
 
@@ -206,7 +207,7 @@ class McpServer:
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": "luxembourg-mcp", "version": "0.4.1"},
-                "instructions": "Keyless access to official Luxembourg public data through 27 tools. Results include upstream source URLs.",
+                "instructions": "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs.",
             })
         if method == "ping":
             return self._result(request_id, {})

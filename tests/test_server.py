@@ -288,9 +288,9 @@ class ProtocolTests(unittest.TestCase):
         response = self.server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
         self.assertEqual(response["result"]["protocolVersion"], "2025-11-25")
 
-    def test_lists_twenty_seven_tools(self):
+    def test_lists_twenty_eight_tools(self):
         response = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        self.assertEqual(len(response["result"]["tools"]), 27)
+        self.assertEqual(len(response["result"]["tools"]), 28)
 
     def test_notifications_have_no_response(self):
         self.assertIsNone(self.server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
