@@ -31,6 +31,7 @@ TOOL_CASES = {
     "get_housing_prices": {"property_type": "apartment", "commune": "Bertrange"},
     "get_election_results": {},
     "get_ev_charging": {"query": "Esch", "available_only": True},
+    "get_waste_collections": {"commune": "Bech", "waste_type": "verre", "limit": 5},
 }
 
 
@@ -53,7 +54,7 @@ class EveryToolContractTests(unittest.TestCase):
 
     def test_every_registered_tool_has_a_contract_case(self):
         self.assertEqual(set(self.server.tools), set(TOOL_CASES))
-        self.assertEqual(len(TOOL_CASES), 27)
+        self.assertEqual(len(TOOL_CASES), 28)
 
     def test_every_tool_routes_arguments_and_returns_structured_content(self):
         for request_id, (name, arguments) in enumerate(TOOL_CASES.items(), start=1):

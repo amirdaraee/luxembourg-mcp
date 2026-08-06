@@ -6,7 +6,7 @@
   <meta name="description" content="A keyless MCP server for official Luxembourg public data: laws, statistics, mobility, geodata, environment, and parliament.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Luxembourg MCP — official public data for agents">
-  <meta property="og:description" content="27 MCP tools over 18 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
+  <meta property="og:description" content="28 MCP tools over 18 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
   <meta property="og:url" content="https://luxembourg-mcp.com/">
   <meta property="og:image" content="https://luxembourg-mcp.com/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -23,7 +23,7 @@
     "@type": "SoftwareApplication",
     "name": "Luxembourg MCP",
     "url": "https://luxembourg-mcp.com/",
-    "description": "Keyless MCP server for official Luxembourg public data: 27 tools over 18 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
+    "description": "Keyless MCP server for official Luxembourg public data: 28 tools over 18 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
@@ -280,7 +280,7 @@
           <button class="copy" id="copy" type="button" aria-label="Copy MCP endpoint URL">Copy</button>
         </div>
         <div class="metrics">
-          <div><strong>27</strong><span>tools</span></div>
+          <div><strong>28</strong><span>tools</span></div>
           <div><strong>18</strong><span>official systems</span></div>
           <div><strong>0</strong><span>API keys</span></div>
         </div>
@@ -291,7 +291,7 @@
   <main class="wrap catalogue">
     <div class="section-head">
       <h2><span class="no">01</span> Tool catalogue</h2>
-      <p class="count">Showing <b id="shown">27</b> of 27 tools</p>
+      <p class="count">Showing <b id="shown">28</b> of 28 tools</p>
     </div>
 
     <div class="controls">
@@ -338,6 +338,7 @@
       <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>Observatoire de l'Habitat</b></span><span class="keyless">Keyless</span></div><h3>get_housing_prices</h3><p>Advertised sale prices for flats and houses by commune.</p><span class="arguments">property_type? · commune? · year?</span></article>
       <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>CTIE</b></span><span class="keyless">Keyless</span></div><h3>get_election_results</h3><p>2023 legislative results, national and per circonscription.</p><span class="arguments">no arguments</span></article>
       <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Chargy</b></span><span class="keyless">Keyless</span></div><h3>get_ev_charging</h3><p>Public EV charging stations with live connector availability.</p><span class="arguments">query? · available_only?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>Environnement</b></span><span class="keyless">Keyless</span></div><h3>get_waste_collections</h3><p>Upcoming municipal waste-collection dates by commune.</p><span class="arguments">commune · street? · waste_type? · limit?</span></article>
     </section>
     <p class="empty" id="empty">No tools match <b id="empty-q">this search</b>.</p>
   </main>
@@ -349,7 +350,7 @@
         <p>The server speaks standard MCP over HTTP. Point any MCP-capable client at the endpoint above — the URL is read from the browser, so it matches wherever you're running it.</p>
         <ol class="steps">
           <li>Copy the config into your client's <b>MCP servers</b> settings.</li>
-          <li>Reload the client so it discovers all <b>27</b> tools across <strong>18</strong> official systems.</li>
+          <li>Reload the client so it discovers all <b>28</b> tools across <strong>18</strong> official systems.</li>
           <li>Ask your agent for anything Luxembourg — <b>no key required</b>.</li>
         </ol>
       </div>

@@ -8,9 +8,9 @@ Keyless Model Context Protocol access to Luxembourg public data.
 
 **Hosted endpoint — no install needed:** point any MCP client at `https://mcp.luxembourg-mcp.com/mcp` (streamable HTTP). Or run it yourself with `uvx luxembourg-mcp`. Website: [luxembourg-mcp.com](https://luxembourg-mcp.com)
 
-Luxembourg MCP turns fragmented public APIs and open datasets into 27 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
+Luxembourg MCP turns fragmented public APIs and open datasets into 28 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
 
-- 27 MCP tools
+- 28 MCP tools
 - 18 public data systems
 - No API keys or accounts
 - No scraping
@@ -56,6 +56,7 @@ Luxembourg MCP applies that idea to the Grand Duchy. It is an independent implem
 | `get_housing_prices` | Observatoire de l'Habitat | Advertised housing sale prices by commune |
 | `get_election_results` | CTIE | 2023 legislative election results |
 | `get_ev_charging` | Chargy | Public EV charging with live availability |
+| `get_waste_collections` | Environment Administration | Upcoming waste-collection dates by commune |
 
 ## Quick start
 
@@ -139,7 +140,7 @@ Tool output is untrusted external data. Dataset descriptions, legislation titles
 
 ## Testing
 
-The default suite is deterministic and does not use the network. It covers JSON-RPC behavior, schema validation, provider parsers, catalogue packaging, and the `tools/call` contract for all 27 tools.
+The default suite is deterministic and does not use the network. It covers JSON-RPC behavior, schema validation, provider parsers, catalogue packaging, and the `tools/call` contract for all 28 tools.
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v
