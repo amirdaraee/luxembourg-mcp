@@ -206,7 +206,7 @@ class McpServer:
             return self._result(request_id, {
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.0"},
+                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.1"},
                 "instructions": "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs.",
             })
         if method == "ping":
