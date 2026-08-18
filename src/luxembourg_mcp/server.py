@@ -206,7 +206,7 @@ class McpServer:
             return self._result(request_id, {
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "luxembourg-mcp", "version": "0.4.1"},
+                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.0"},
                 "instructions": "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs.",
             })
         if method == "ping":
@@ -221,6 +221,7 @@ class McpServer:
                 arguments = params.get("arguments", {})
                 validate_schema(arguments, tool.schema)
                 value = tool.function(**arguments)
+                print(f"tool={tool.name} status=ok", file=sys.stderr, flush=True)
                 return self._result(request_id, {
                     "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}],
                     "structuredContent": value,
@@ -232,6 +233,7 @@ class McpServer:
                 message = str(exc)
             except Exception as exc:
                 message = f"Tool failed: {exc}"
+            print(f"tool={tool.name} status=error", file=sys.stderr, flush=True)
             return self._result(request_id, {"content": [{"type": "text", "text": message}], "isError": True})
         return self._error(request_id, -32601, f"Method not found: {method}")
 
