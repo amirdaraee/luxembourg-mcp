@@ -1,10 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <clipPath id="tile"><rect width="64" height="64" rx="10"/></clipPath>
-  <g clip-path="url(#tile)">
-    <rect width="64" height="64" fill="#ffffff"/>
-    <rect x="0" y="52" width="21.34" height="12" fill="#ea141d"/>
-    <rect x="21.33" y="52" width="21.34" height="12" fill="#dde1e4"/>
-    <rect x="42.66" y="52" width="21.34" height="12" fill="#00a2e1"/>
-  </g>
+  <rect width="64" height="64" fill="#ffffff"/>
+  <rect x="0" y="52" width="21.34" height="12" fill="#ea141d"/>
+  <rect x="21.33" y="52" width="21.34" height="12" fill="#dde1e4"/>
+  <rect x="42.66" y="52" width="21.34" height="12" fill="#00a2e1"/>
   <text x="32" y="36" text-anchor="middle" font-family="IBM Plex Mono, Menlo, Consolas, monospace" font-weight="700" font-size="26" fill="#14181b" letter-spacing="1">LU</text>
 </svg>
