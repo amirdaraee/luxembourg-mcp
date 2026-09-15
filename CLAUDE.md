@@ -59,7 +59,8 @@ The contract tests enforce set-equality between registered tools and test cases,
 
 ## Conventions
 
-- Version string lives in six places and must stay in sync: `pyproject.toml`, `__init__.__version__`, the User-Agent in http.py, `serverInfo` in server.py, `server.json` (two fields), and `RELEASE` in `deploy/cloudflare/wrangler.jsonc`.
+- Version string lives in six places and must stay in sync: `pyproject.toml`, `__init__.__version__`, the User-Agent in http.py, `serverInfo` in server.py, `server.json` (two fields), and `RELEASE` in `deploy/cloudflare/wrangler.jsonc` (which may carry a `-N` re-provisioning suffix, see below).
 - The hosted endpoint (deploy/cloudflare) routes to a Durable Object named `main-${RELEASE}`: an existing DO keeps its originally provisioned container image across rolling deploys, so bumping `RELEASE` is what actually ships new server code to mcp.luxembourg-mcp.com. Deploy with `npx wrangler deploy` from deploy/cloudflare (Docker must be running); verify with an MCP `initialize` against the live endpoint.
+- Deploy race: the Worker switches to the new DO name immediately, but the container image rollout finishes minutes later. Any request in that window provisions the new DO on the *old* image, permanently. After deploying, send no traffic until `npx wrangler containers info <app-id> --json` shows `active_rollout_id: null`. If a DO was provisioned too early (`initialize` reports the old version), re-provision with a `-N` suffix on `RELEASE` (e.g. `0.5.2-1`) and redeploy; the image is unchanged, so no new rollout starts.
 - Keyless only: no upstream that requires an API key, account, or scraping.
 - Do not add `Co-Authored-By` / AI-attribution trailers to git commits.
