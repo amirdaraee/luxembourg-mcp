@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import sys
@@ -21,6 +22,60 @@ PROTOCOL_VERSION = "2025-11-25"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 MAX_REQUEST_BYTES = 1024 * 1024
 DEFAULT_RATE_LIMIT = 60
+DEFAULT_MAX_CONNECTIONS = 32
+REQUEST_TIMEOUT_SECONDS = 30
+# The stdlib access log escapes these; our log_message override must too.
+_LOG_ESCAPES = {code: f"\\x{code:02x}" for code in (*range(0x20), 0x7F)}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _rate_limit_key(client: str) -> str:
+    """Bucket IPv6 clients by /64: one subscriber routinely holds a whole /64."""
+    try:
+        address = ipaddress.ip_address(client)
+    except ValueError:
+        return client
+    if address.version == 4:
+        return str(address)
+    if address.ipv4_mapped is not None:
+        return str(address.ipv4_mapped)
+    return str(ipaddress.ip_network(f"{address}/64", strict=False))
+
+
+class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that drops connections beyond a concurrency cap instead of spawning unbounded threads."""
+
+    def __init__(self, server_address: tuple[str, int], handler: type, max_connections: int):
+        self._slots = threading.BoundedSemaphore(max(max_connections, 1))
+        super().__init__(server_address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # Clients hanging up mid-request is routine; don't flood stderr with tracebacks.
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
 
 
 def catalog_html() -> bytes:
@@ -206,7 +261,7 @@ class McpServer:
             return self._result(request_id, {
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.1"},
+                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.2"},
                 "instructions": "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs.",
             })
         if method == "ping":
@@ -214,7 +269,8 @@ class McpServer:
         if method == "tools/list":
             return self._result(request_id, {"tools": [tool.definition() for tool in self.tools.values()]})
         if method == "tools/call":
-            tool = self.tools.get(params.get("name"))
+            name = params.get("name")
+            tool = self.tools.get(name) if isinstance(name, str) else None
             if tool is None:
                 return self._error(request_id, -32602, f"Unknown tool: {params.get('name')}")
             try:
@@ -241,20 +297,21 @@ class McpServer:
         for line in sys.stdin:
             try:
                 request = json.loads(line)
-                response = self.handle(request)
-            except json.JSONDecodeError:
+            except (ValueError, RecursionError):
                 response = self._error(None, -32700, "Parse error")
+            else:
+                try:
+                    response = self.handle(request)
+                except Exception:
+                    response = self._error(None, -32603, "Internal error")
             if response is not None:
                 sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
                 sys.stdout.flush()
 
     def create_http_server(self, host: str, port: int) -> ThreadingHTTPServer:
         mcp = self
-        try:
-            rate_limit = int(os.environ.get("LUXEMBOURG_MCP_RATE_LIMIT", str(DEFAULT_RATE_LIMIT)))
-        except ValueError:
-            rate_limit = DEFAULT_RATE_LIMIT
-        limiter = RateLimiter(rate_limit)
+        limiter = RateLimiter(_env_int("LUXEMBOURG_MCP_RATE_LIMIT", DEFAULT_RATE_LIMIT))
+        max_connections = _env_int("LUXEMBOURG_MCP_MAX_CONNECTIONS", DEFAULT_MAX_CONNECTIONS)
         allowed_origins = frozenset(
             item.strip() for item in os.environ.get("LUXEMBOURG_MCP_ALLOWED_ORIGINS", "").split(",") if item.strip()
         )
@@ -263,6 +320,9 @@ class McpServer:
         client_ip_header = os.environ.get("LUXEMBOURG_MCP_CLIENT_IP_HEADER") or None
 
         class Handler(BaseHTTPRequestHandler):
+            # Socket read/write timeout: stops idle or trickling clients from pinning a connection slot.
+            timeout = REQUEST_TIMEOUT_SECONDS
+
             def _origin_allowed(self, origin: str) -> bool:
                 return _origin_is_local(origin) or origin in allowed_origins or "*" in allowed_origins
 
@@ -299,7 +359,7 @@ class McpServer:
                     self._send(403, {"error": "Origin is not allowed by this server"})
                     return
                 client = (client_ip_header and self.headers.get(client_ip_header)) or self.client_address[0]
-                if not limiter.allow(client):
+                if not limiter.allow(_rate_limit_key(client)):
                     self._send(429, {"error": "Rate limit exceeded"}, {"Retry-After": "60"})
                     return
                 raw_length = self.headers.get("Content-Length")
@@ -319,7 +379,7 @@ class McpServer:
                     return
                 try:
                     request = json.loads(self.rfile.read(length))
-                except json.JSONDecodeError:
+                except (ValueError, RecursionError):
                     response = mcp._error(None, -32700, "Parse error")
                     self._send(400, response)
                     return
@@ -355,9 +415,9 @@ class McpServer:
                 self.wfile.write(body)
 
             def log_message(self, fmt: str, *args: Any) -> None:
-                sys.stderr.write(f"{self.address_string()} - {fmt % args}\n")
+                sys.stderr.write(f"{self.address_string()} - {(fmt % args).translate(_LOG_ESCAPES)}\n")
 
-        return ThreadingHTTPServer((host, port), Handler)
+        return _BoundedThreadingHTTPServer((host, port), Handler, max_connections)
 
     def run_http(self, host: str, port: int) -> None:
         server = self.create_http_server(host, port)

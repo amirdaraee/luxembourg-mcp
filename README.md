@@ -129,12 +129,14 @@ The built-in server includes baseline controls, but it is not a replacement for 
 
 - HTTP request bodies are limited to 1 MiB.
 - Upstream responses are limited to 25 MiB.
-- Metadata-derived downloads are restricted to trusted `data.public.lu` HTTPS resource hosts, including redirects.
+- Metadata-derived downloads are restricted to trusted `data.public.lu` HTTPS resource hosts, including redirects; fixed upstream URLs only follow HTTPS redirects on the same host.
+- Upstream XML declaring DTD entities is rejected before parsing, and user-supplied identifiers cannot form `.`/`..` URL path segments.
 - GTFS ZIP members are checked for decompressed size, encryption, and suspicious compression ratios before extraction.
-- HTTP clients are limited to 60 MCP requests per minute by default.
-- The Docker image runs as an unprivileged `app` user.
+- HTTP clients are limited to 60 MCP requests per minute by default; IPv6 clients are grouped by /64 prefix.
+- The HTTP server serves at most 32 concurrent connections by default and closes connections idle for 30 seconds.
+- The Docker image runs as an unprivileged `app` user from a digest-pinned base image.
 
-Set `LUXEMBOURG_MCP_RATE_LIMIT` to change the per-minute, per-client limit. A value of `0` disables the built-in limiter. The limiter intentionally uses the direct TCP peer address and does not trust forwarding headers unless `LUXEMBOURG_MCP_CLIENT_IP_HEADER` names one explicitly (for example `CF-Connecting-IP` behind Cloudflare); only set it when a trusted proxy controls that header, since clients could otherwise spoof it to escape the limit.
+Set `LUXEMBOURG_MCP_RATE_LIMIT` to change the per-minute, per-client limit. A value of `0` disables the built-in limiter. The limiter intentionally uses the direct TCP peer address and does not trust forwarding headers unless `LUXEMBOURG_MCP_CLIENT_IP_HEADER` names one explicitly (for example `CF-Connecting-IP` behind Cloudflare); only set it when a trusted proxy controls that header, since clients could otherwise spoof it to escape the limit. Set `LUXEMBOURG_MCP_MAX_CONNECTIONS` to change the concurrent-connection cap; connections beyond it are closed immediately.
 
 Tool output is untrusted external data. Dataset descriptions, legislation titles, and other public text may contain misleading or adversarial instructions. MCP clients and agent hosts must treat tool results as data, not system instructions, and should require confirmation or policy checks before allowing powerful sibling tools to act on content returned here.
 

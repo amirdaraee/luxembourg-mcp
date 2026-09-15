@@ -7,7 +7,7 @@ import ipaddress
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_UPSTREAM_BYTES = 25 * 1024 * 1024
 
@@ -53,8 +53,10 @@ class HttpClient:
         max_bytes: int = MAX_UPSTREAM_BYTES,
         allowed_hosts: set[str] | frozenset[str] | None = None,
     ) -> tuple[bytes, str]:
-        if allowed_hosts is not None:
-            validate_external_url(url, allowed_hosts)
+        if allowed_hosts is None:
+            # Hardcoded upstream URLs: redirects may only stay on the same HTTPS host.
+            allowed_hosts = frozenset({(urlsplit(url).hostname or "").lower()})
+        validate_external_url(url, allowed_hosts)
         request_headers = {
             "Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
             "User-Agent": "luxembourg-mcp/0.5",
@@ -65,9 +67,8 @@ class HttpClient:
             headers=request_headers,
         )
         try:
-            opener = build_opener(_SafeRedirectHandler(allowed_hosts)) if allowed_hosts is not None else None
-            response_context = opener.open(request, timeout=20) if opener is not None else urlopen(request, timeout=20)
-            with response_context as response:
+            opener = build_opener(_SafeRedirectHandler(allowed_hosts))
+            with opener.open(request, timeout=20) as response:
                 declared_size = response.headers.get("Content-Length")
                 if declared_size is not None:
                     try:

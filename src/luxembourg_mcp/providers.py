@@ -6,18 +6,21 @@ import csv
 import io
 import json
 import re
+import threading
 import time
 import unicodedata
 import zipfile
 from datetime import datetime
 from xml.etree import ElementTree
+from xml.parsers import expat
 from typing import Any
 from urllib.parse import quote, urlencode
 
 from .http import HttpClient, UpstreamError
 
 CATALOG = "https://data.public.lu/api/1"
-GEOCODE = "https://apiv3.geoportail.lu/geocode"
+# apiv3 302-redirects to apiv4; hardcoded fetches only follow same-host redirects.
+GEOCODE = "https://apiv4.geoportail.lu/geocode"
 FEATURES = "https://features.geoportail.lu"
 WEATHER_ALERTS_SLUG = "meteolux-weather-warnings-for-the-grand-duchy-of-luxembourg-1"
 LEGILUX = "https://data.legilux.public.lu/sparqlendpoint"
@@ -87,6 +90,36 @@ def _meteolux_label(sensor_id: str) -> str | None:
     return f"{label}, {runway}" if runway else label
 
 
+class _PrologDone(Exception):
+    pass
+
+
+def _parse_xml(payload: bytes) -> ElementTree.Element:
+    """ElementTree.fromstring that refuses DTD entity declarations (entity-expansion bombs)."""
+    probe = expat.ParserCreate()
+
+    def reject_entity(*_: Any) -> None:
+        raise ElementTree.ParseError("XML entity declarations are not allowed")
+
+    def stop_at_root(*_: Any) -> None:
+        raise _PrologDone
+
+    # Entities can only be declared before the root element, so the probe stops there.
+    probe.EntityDeclHandler = reject_entity
+    probe.StartElementHandler = stop_at_root
+    try:
+        probe.Parse(payload, True)
+    except (_PrologDone, expat.ExpatError):
+        pass  # syntax errors are reported by the real parse below
+    return ElementTree.fromstring(payload)
+
+
+def _require_path_segments(value: str, name: str) -> None:
+    """Reject values that would become '.' or '..' URL path segments once interpolated."""
+    if any(part in {".", ".."} for part in value.split("/")):
+        raise ValueError(f"{name} must not contain '.' or '..' path segments")
+
+
 _XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _XLSX_RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 
@@ -95,10 +128,10 @@ def _xlsx_sheet_rows(payload: bytes, sheet_name: str | None) -> tuple[str, list[
     """Minimal stdlib XLSX reader: returns (chosen sheet, all sheet names, rows as {column: value})."""
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-            workbook = ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/workbook.xml"))
+            workbook = _parse_xml(_read_bounded_zip_member(archive, "xl/workbook.xml"))
             rels = {
                 rel.get("Id"): rel.get("Target")
-                for rel in ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/_rels/workbook.xml.rels"))
+                for rel in _parse_xml(_read_bounded_zip_member(archive, "xl/_rels/workbook.xml.rels"))
             }
             sheets = {s.get("name"): rels.get(s.get(_XLSX_RID)) for s in workbook.iter(f"{_XLSX_NS}sheet")}
             names = [name for name in sheets if name]
@@ -109,9 +142,9 @@ def _xlsx_sheet_rows(payload: bytes, sheet_name: str | None) -> tuple[str, list[
             path = target if target.startswith("xl/") else f"xl/{target.lstrip('/')}"
             shared: list[str] = []
             if "xl/sharedStrings.xml" in archive.namelist():
-                strings = ElementTree.fromstring(_read_bounded_zip_member(archive, "xl/sharedStrings.xml"))
+                strings = _parse_xml(_read_bounded_zip_member(archive, "xl/sharedStrings.xml"))
                 shared = ["".join(t.text or "" for t in si.iter(f"{_XLSX_NS}t")) for si in strings]
-            sheet = ElementTree.fromstring(_read_bounded_zip_member(archive, path))
+            sheet = _parse_xml(_read_bounded_zip_member(archive, path))
     except (zipfile.BadZipFile, KeyError, ElementTree.ParseError) as exc:
         raise UpstreamError("Upstream returned an invalid XLSX workbook") from exc
     rows = []
@@ -165,20 +198,43 @@ class LuxembourgData:
     def __init__(self, http: HttpClient | None = None):
         self.http = http or HttpClient()
         self._cache: dict[str, tuple[float, int, Any]] = {}
+        self._cache_lock = threading.Lock()
+        self._cache_key_locks: dict[str, threading.Lock] = {}
 
-    def _cached(self, key: str, ttl: int, loader: Any) -> Any:
+    def _fresh(self, key: str) -> tuple[bool, Any]:
         cached = self._cache.get(key)
         if cached and time.monotonic() - cached[0] < cached[1]:
-            return cached[2]
-        value = loader()
-        now = time.monotonic()
-        for stale_key in [k for k, entry in self._cache.items() if now - entry[0] >= entry[1]]:
-            self._cache.pop(stale_key)
-        if key not in self._cache and len(self._cache) >= 32:
-            oldest = min(self._cache, key=lambda item: self._cache[item][0])
-            self._cache.pop(oldest)
-        self._cache[key] = (now, ttl, value)
-        return value
+            return True, cached[2]
+        return False, None
+
+    def _cached(self, key: str, ttl: int, loader: Any) -> Any:
+        with self._cache_lock:
+            hit, value = self._fresh(key)
+            if hit:
+                return value
+            key_lock = self._cache_key_locks.setdefault(key, threading.Lock())
+        # Single-flight per key: concurrent callers on a cold cache wait for one
+        # upstream download instead of each fetching (and parsing) it again.
+        with key_lock:
+            try:
+                with self._cache_lock:
+                    hit, value = self._fresh(key)
+                if hit:
+                    return value
+                value = loader()
+                now = time.monotonic()
+                with self._cache_lock:
+                    for stale_key in [k for k, entry in self._cache.items() if now - entry[0] >= entry[1]]:
+                        self._cache.pop(stale_key, None)
+                    if key not in self._cache and len(self._cache) >= 32:
+                        oldest = min(self._cache, key=lambda item: self._cache[item][0])
+                        self._cache.pop(oldest, None)
+                    self._cache[key] = (now, ttl, value)
+                return value
+            finally:
+                with self._cache_lock:
+                    if self._cache_key_locks.get(key) is key_lock:
+                        del self._cache_key_locks[key]
 
     @staticmethod
     def _decode_csv(payload: bytes, delimiter: str | None = None) -> list[dict[str, str]]:
@@ -215,6 +271,7 @@ class LuxembourgData:
     def get_dataset(self, dataset_id_or_slug: str) -> dict:
         if not dataset_id_or_slug.strip():
             raise ValueError("dataset_id_or_slug must not be empty")
+        _require_path_segments(dataset_id_or_slug, "dataset_id_or_slug")
         url = f"{CATALOG}/datasets/{quote(dataset_id_or_slug, safe='')}/"
         item = self.http.get_json(url)
         result = _dataset_summary(item)
@@ -293,6 +350,7 @@ class LuxembourgData:
     ) -> dict:
         if not collection_id or ".." in collection_id:
             raise ValueError("invalid collection_id")
+        _require_path_segments(collection_id, "collection_id")
         params: dict[str, Any] = {"f": "json", "limit": min(max(limit, 1), 100)}
         if bbox is not None:
             if len(bbox) != 4 or bbox[0] > bbox[2] or bbox[1] > bbox[3]:
@@ -372,7 +430,7 @@ class LuxembourgData:
             url = f"{STATEC}/dataflow/LU1/all/latest"
             payload, _ = self.http.get_bytes(url, {"Accept": "application/vnd.sdmx.structure+xml;version=2.1"})
             try:
-                root = ElementTree.fromstring(payload)
+                root = _parse_xml(payload)
             except ElementTree.ParseError as exc:
                 raise UpstreamError("STATEC returned invalid SDMX XML") from exc
             common = "{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common}"
@@ -417,6 +475,7 @@ class LuxembourgData:
             raise ValueError("dataflow_id must look like DF_D7100")
         if not re.fullmatch(r"[A-Za-z0-9+._-]+", key):
             raise ValueError("key contains unsupported characters")
+        _require_path_segments(key, "key")
         last_n_observations = min(max(last_n_observations, 1), 100)
         max_rows = min(max(max_rows, 1), 2000)
         params = {"lastNObservations": last_n_observations, "dimensionAtObservation": "AllDimensions"}
@@ -456,7 +515,7 @@ class LuxembourgData:
         url = f"{CITA_TRAFFIC}/trafficstatus_{road}"
         payload, _ = self.http.get_bytes(url, {"Accept": "application/xml"})
         try:
-            root = ElementTree.fromstring(payload)
+            root = _parse_xml(payload)
         except ElementTree.ParseError as exc:
             raise UpstreamError("CITA returned invalid DATEX II XML") from exc
         stations = []
@@ -669,7 +728,7 @@ class LuxembourgData:
         def load() -> dict:
             payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
             try:
-                root = ElementTree.fromstring(payload)
+                root = _parse_xml(payload)
             except ElementTree.ParseError as exc:
                 raise UpstreamError("Election results were not valid XML") from exc
 
@@ -725,7 +784,7 @@ class LuxembourgData:
             accept = {"Accept": "application/vnd.google-earth.kml+xml, application/xml;q=0.9, */*;q=0.5"}
             payload, _ = self.http.get_bytes(url, accept, allowed_hosts=CHARGY_RESOURCE_HOSTS)
             try:
-                root = ElementTree.fromstring(payload)
+                root = _parse_xml(payload)
             except ElementTree.ParseError as exc:
                 raise UpstreamError("Chargy returned invalid KML") from exc
             stations = []

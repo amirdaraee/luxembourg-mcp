@@ -15,7 +15,7 @@ luxembourg-mcp                                              # stdio transport (d
 luxembourg-mcp --transport http --port 8000                 # HTTP: /mcp endpoint, / catalog, /health
 ```
 
-`LUXEMBOURG_MCP_RATE_LIMIT` sets the HTTP per-IP requests/minute limit (0 disables).
+`LUXEMBOURG_MCP_RATE_LIMIT` sets the HTTP per-IP requests/minute limit (0 disables; IPv6 bucketed by /64). `LUXEMBOURG_MCP_MAX_CONNECTIONS` caps concurrent HTTP connections (default 32).
 
 ## Hard constraint: zero dependencies
 
@@ -25,7 +25,7 @@ luxembourg-mcp --transport http --port 8000                 # HTTP: /mcp endpoin
 
 Three layers, strictly ordered:
 
-- `src/luxembourg_mcp/http.py` — `HttpClient` wraps urllib; every network failure becomes `UpstreamError`. Enforces a 25 MB response cap and, when `allowed_hosts` is passed, exact-hostname HTTPS allowlisting including on redirects (`_SafeRedirectHandler`).
+- `src/luxembourg_mcp/http.py` — `HttpClient` wraps urllib; every network failure becomes `UpstreamError`. Enforces a 25 MB response cap and exact-hostname HTTPS allowlisting including on redirects (`_SafeRedirectHandler`): `allowed_hosts` when passed, otherwise the request URL's own host only (so a hardcoded upstream that starts redirecting cross-host fails loudly in the weekly live tests — update the constant rather than widening the policy).
 - `src/luxembourg_mcp/providers.py` — `LuxembourgData`, one method per tool ("fetch → parse → shape"). Upstream base URLs are hardcoded constants. TTL cache via `_cached()` for expensive fetches (STATEC catalog and GTFS zip: 1 h; air quality: 10 min). `HttpClient` is constructor-injected, which is what lets tests run offline with a fake.
 - `src/luxembourg_mcp/server.py` — `McpServer`: the tool registry (name → `Tool` dataclass with JSON schema), JSON-RPC dispatch in `handle()`, schema validation, and both transports (stdio loop; stateless `ThreadingHTTPServer` with body-size cap, `RateLimiter`, and localhost-Origin check).
 
@@ -48,7 +48,14 @@ The contract tests enforce set-equality between registered tools and test cases,
 - Validate URLs/origins by parsing and comparing the exact hostname, never `startswith`/substring (past bug: `http://localhost.evil.example` bypassed the Origin check).
 - URLs taken from data.public.lu dataset metadata (not hardcoded) must be fetched with `allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS`.
 - Size limits are enforced on observed bytes, not declared headers: HTTP request body (1 MB), upstream responses (25 MB), zip members via `_read_bounded_zip_member` (10 MB + compression-ratio check).
-- New user inputs that reach URLs need a regex allowlist or `quote()` (see `get_statistics`, `get_cfl_parking`).
+- New user inputs that reach URLs need a regex allowlist or `quote()` (see `get_statistics`, `get_cfl_parking`), plus `_require_path_segments()` when `.` is allowed (`quote` leaves `..` intact).
+- Parse upstream XML with `_parse_xml()`, never `ElementTree.fromstring` directly: it rejects DTD entity declarations (expat's amplification limit only applies past 8 MiB of input).
+- HTTP transport resource bounds: socket timeout (`REQUEST_TIMEOUT_SECONDS`), connection cap (`_BoundedThreadingHTTPServer`), and single-flight `_cached()` so concurrent cold requests trigger one upstream download.
+- Malformed input never escapes as an exception: `json.loads` failures catch `(ValueError, RecursionError)`, and request-derived values reaching stderr are control-character escaped.
+
+## Supply chain
+
+- Workflow actions are pinned to commit SHAs (`# vX.Y.Z` comment), the Dockerfile base to a digest, and `deploy/cloudflare/package-lock.json` is committed; `.github/dependabot.yml` bumps all three weekly. Keep new pins in the same form.
 
 ## Conventions
 

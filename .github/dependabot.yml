@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # SHA-pinned workflow actions (the "# vX.Y.Z" comments are updated too).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Digest-pinned Python base image used by the hosted container.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Cloudflare Worker deploy tooling (wrangler, @cloudflare/containers).
+  - package-ecosystem: npm
+    directory: /deploy/cloudflare
+    schedule:
+      interval: weekly
+    groups:
+      cloudflare:
+        patterns: ["*"]

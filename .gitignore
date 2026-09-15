@@ -13,7 +13,6 @@ build/
 
 # deploy/cloudflare
 node_modules/
-package-lock.json
 .wrangler/
 
 # local experiments
