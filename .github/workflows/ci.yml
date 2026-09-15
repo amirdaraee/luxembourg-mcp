@@ -54,3 +54,8 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
             | grep -q '"luxembourg-mcp"'
+          curl -sf -X POST http://127.0.0.1:8123/mcp \
+            -H 'Content-Type: application/json' \
+            -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: server/discover' \
+            -d '{"jsonrpc":"2.0","id":2,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}' \
+            | grep -q '"supportedVersions"'

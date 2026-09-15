@@ -116,8 +116,8 @@ The server:
 
 - validates arguments against every advertised tool input schema;
 - rejects JSON-RPC batches and other non-object JSON with `-32600 Invalid Request`;
-- supports MCP revisions `2025-11-25`, `2025-06-18`, and `2025-03-26`;
-- validates the `MCP-Protocol-Version` header for HTTP requests;
+- supports MCP `2026-07-28` (stateless: per-request `_meta`, `server/discover`, cache hints) alongside the `initialize`-handshake revisions `2025-11-25`, `2025-06-18`, and `2025-03-26` on the same endpoint and over stdio;
+- validates the `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` headers against the request body for HTTP requests;
 - returns tool failures as MCP tool results without terminating the server;
 - bounds large upstream responses before placing them in agent context.
 

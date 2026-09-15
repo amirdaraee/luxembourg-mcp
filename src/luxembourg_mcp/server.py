@@ -1,7 +1,9 @@
-"""Minimal MCP 2025-11-25 server for stdio and stateless HTTP."""
+"""Minimal dual-era MCP server (2026-07-28 stateless and 2025-11-25 handshake) for stdio and HTTP."""
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
 import json
 import os
@@ -18,8 +20,22 @@ from urllib.parse import urlsplit
 from .http import UpstreamError
 from .providers import LuxembourgData
 
-PROTOCOL_VERSION = "2025-11-25"
-SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
+# Dual-era server: "modern" revisions are stateless (per-request `_meta`, no handshake);
+# "legacy" revisions use the `initialize` handshake. Both are served on one endpoint.
+MODERN_PROTOCOL_VERSIONS = ("2026-07-28",)
+LEGACY_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
+SUPPORTED_PROTOCOL_VERSIONS = MODERN_PROTOCOL_VERSIONS + LEGACY_PROTOCOL_VERSIONS
+PROTOCOL_VERSION = LEGACY_PROTOCOL_VERSIONS[0]  # offered to `initialize` requests for unknown versions
+SERVER_INFO = {"name": "luxembourg-mcp", "version": "0.6.0"}
+INSTRUCTIONS = "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs."
+TOOLS_TTL_MS = 60 * 60 * 1000  # the tool list only changes between releases
+HEADER_MISMATCH = -32020
+UNSUPPORTED_PROTOCOL_VERSION = -32022
+META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion"
+META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities"
+META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
+# Methods whose Mcp-Name header mirrors a body field (2026-07-28 Streamable HTTP).
+_NAMED_METHODS = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
 MAX_REQUEST_BYTES = 1024 * 1024
 DEFAULT_RATE_LIMIT = 60
 DEFAULT_MAX_CONNECTIONS = 32
@@ -76,6 +92,39 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
         if isinstance(sys.exc_info()[1], ConnectionError):
             return
         super().handle_error(request, client_address)
+
+
+def _decode_header_value(value: str | None) -> str | None:
+    """Decode an Mcp-Name/Mcp-Param value (plain header-safe ASCII or the `=?base64?...?=` sentinel)."""
+    if value is None:
+        return None
+    if value.startswith("=?base64?") and value.endswith("?=") and len(value) >= len("=?base64??="):
+        try:
+            return base64.b64decode(value[len("=?base64?"):-len("?=")], validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError):
+            return None
+    if not all(char == "\t" or " " <= char <= "~" for char in value):
+        return None
+    return value
+
+
+def _header_mismatch(headers: Any, method: str, params: dict, version: str) -> str | None:
+    """Return why the mirrored MCP headers disagree with the body, or None if they match."""
+    def shown(value: Any) -> str:
+        return repr(value)[:100]
+
+    header_version = headers.get("MCP-Protocol-Version")
+    if header_version != version:
+        return f"MCP-Protocol-Version header {shown(header_version)} does not match body value {shown(version)}"
+    header_method = headers.get("Mcp-Method")
+    if header_method != method:
+        return f"Mcp-Method header {shown(header_method)} does not match body value {shown(method)}"
+    if method in _NAMED_METHODS:
+        body_name = params.get(_NAMED_METHODS[method])
+        header_name = _decode_header_value(headers.get("Mcp-Name"))
+        if header_name is None or header_name != body_name:
+            return f"Mcp-Name header {shown(headers.get('Mcp-Name'))} does not match body value {shown(body_name)}"
+    return None
 
 
 def catalog_html() -> bytes:
@@ -237,19 +286,90 @@ class McpServer:
     def _error(request_id: Any, code: int, message: str) -> dict:
         return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
+    def _unsupported_version(self, request_id: Any, requested: str) -> dict:
+        response = self._error(request_id, UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version")
+        response["error"]["data"] = {"supported": list(SUPPORTED_PROTOCOL_VERSIONS), "requested": requested}
+        return response
+
     def handle(self, request: Any) -> dict | None:
+        """Transport-agnostic entry point (stdio, tests): the JSON-RPC response, or None for notifications."""
+        return self.dispatch(request)[1]
+
+    def dispatch(self, request: Any, headers: Any = None) -> tuple[int, dict | None]:
+        """Serve one JSON-RPC message; returns (HTTP status, response body or None).
+
+        `headers` is the HTTP request's case-insensitive header mapping, or None on stdio,
+        where the MCP header rules do not apply.
+        """
         if not isinstance(request, dict):
-            return self._error(None, -32600, "Invalid Request: expected a JSON object")
+            return 200, self._error(None, -32600, "Invalid Request: expected a JSON object")
         request_id = request.get("id")
         if request.get("jsonrpc") != "2.0" or not isinstance(request.get("method"), str):
-            return self._error(request_id, -32600, "Invalid Request")
+            return 200, self._error(request_id, -32600, "Invalid Request")
         if "id" in request and (
             isinstance(request_id, bool) or not isinstance(request_id, (str, int, float, type(None)))
         ):
-            return self._error(None, -32600, "Invalid Request: invalid id")
+            return 200, self._error(None, -32600, "Invalid Request: invalid id")
         params = request.get("params", {})
         if not isinstance(params, dict):
-            return self._error(request_id, -32602, "Invalid params: expected an object")
+            return 200, self._error(request_id, -32602, "Invalid params: expected an object")
+        request_meta = params.get("_meta")
+        if isinstance(request_meta, dict) and META_PROTOCOL_VERSION in request_meta:
+            return self._dispatch_modern(request, params, request_meta, headers)
+        if headers is not None:
+            # Legacy requests: clients before 2025-06-18 sent no version header.
+            version = headers.get("MCP-Protocol-Version") or "2025-03-26"
+            if version in MODERN_PROTOCOL_VERSIONS:
+                return 400, self._error(request_id, -32602, f"Invalid params: _meta is missing {META_PROTOCOL_VERSION}")
+            if version not in LEGACY_PROTOCOL_VERSIONS:
+                return 400, self._unsupported_version(request_id, version)
+        response = self._dispatch_legacy(request, params)
+        return (202, None) if response is None else (200, response)
+
+    def _dispatch_modern(self, request: dict, params: dict, request_meta: dict, headers: Any) -> tuple[int, dict | None]:
+        request_id = request.get("id")
+        method = request["method"]
+        version = request_meta.get(META_PROTOCOL_VERSION)
+        if not isinstance(version, str) or not isinstance(request_meta.get(META_CLIENT_CAPABILITIES), dict):
+            return 400, self._error(
+                request_id, -32602, f"Invalid params: _meta requires {META_PROTOCOL_VERSION} (string) and {META_CLIENT_CAPABILITIES} (object)"
+            )
+        if "id" not in request:
+            return 202, None
+        if headers is not None:
+            mismatch = _header_mismatch(headers, method, params, version)
+            if mismatch:
+                return 400, self._error(request_id, HEADER_MISMATCH, f"Header mismatch: {mismatch}")
+        if version not in MODERN_PROTOCOL_VERSIONS:
+            return 400, self._unsupported_version(request_id, version)
+        server_meta = {META_SERVER_INFO: SERVER_INFO}
+        if method == "server/discover":
+            return 200, self._result(request_id, {
+                "resultType": "complete",
+                "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
+                "capabilities": {"tools": {"listChanged": False}},
+                "instructions": INSTRUCTIONS,
+                "_meta": server_meta,
+                "ttlMs": TOOLS_TTL_MS,
+                "cacheScope": "public",
+            })
+        if method == "tools/list":
+            return 200, self._result(request_id, {
+                "resultType": "complete",
+                "tools": [tool.definition() for tool in self.tools.values()],
+                "_meta": server_meta,
+                "ttlMs": TOOLS_TTL_MS,
+                "cacheScope": "public",
+            })
+        if method == "tools/call":
+            response = self._call_tool(request_id, params, version)
+            if "result" in response:
+                response["result"] = {"resultType": "complete", **response["result"], "_meta": server_meta}
+            return 200, response
+        return 404, self._error(request_id, -32601, f"Method not found: {method}")
+
+    def _dispatch_legacy(self, request: dict, params: dict) -> dict | None:
+        request_id = request.get("id")
         if "id" not in request:
             return None
         method = request.get("method")
@@ -257,41 +377,44 @@ class McpServer:
             requested_version = params.get("protocolVersion")
             if not isinstance(requested_version, str):
                 return self._error(request_id, -32602, "Invalid params: protocolVersion is required")
-            negotiated_version = requested_version if requested_version in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
+            negotiated_version = requested_version if requested_version in LEGACY_PROTOCOL_VERSIONS else PROTOCOL_VERSION
             return self._result(request_id, {
                 "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "luxembourg-mcp", "version": "0.5.2"},
-                "instructions": "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs.",
+                "serverInfo": SERVER_INFO,
+                "instructions": INSTRUCTIONS,
             })
         if method == "ping":
             return self._result(request_id, {})
         if method == "tools/list":
             return self._result(request_id, {"tools": [tool.definition() for tool in self.tools.values()]})
         if method == "tools/call":
-            name = params.get("name")
-            tool = self.tools.get(name) if isinstance(name, str) else None
-            if tool is None:
-                return self._error(request_id, -32602, f"Unknown tool: {params.get('name')}")
-            try:
-                arguments = params.get("arguments", {})
-                validate_schema(arguments, tool.schema)
-                value = tool.function(**arguments)
-                print(f"tool={tool.name} status=ok", file=sys.stderr, flush=True)
-                return self._result(request_id, {
-                    "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}],
-                    "structuredContent": value,
-                    "isError": False,
-                })
-            except (TypeError, ValueError) as exc:
-                message = f"Invalid arguments: {exc}"
-            except UpstreamError as exc:
-                message = str(exc)
-            except Exception as exc:
-                message = f"Tool failed: {exc}"
-            print(f"tool={tool.name} status=error", file=sys.stderr, flush=True)
-            return self._result(request_id, {"content": [{"type": "text", "text": message}], "isError": True})
+            return self._call_tool(request_id, params, "legacy")
         return self._error(request_id, -32601, f"Method not found: {method}")
+
+    def _call_tool(self, request_id: Any, params: dict, protocol: str) -> dict:
+        name = params.get("name")
+        tool = self.tools.get(name) if isinstance(name, str) else None
+        if tool is None:
+            return self._error(request_id, -32602, f"Unknown tool: {params.get('name')}")
+        try:
+            arguments = params.get("arguments", {})
+            validate_schema(arguments, tool.schema)
+            value = tool.function(**arguments)
+            print(f"tool={tool.name} status=ok protocol={protocol}", file=sys.stderr, flush=True)
+            return self._result(request_id, {
+                "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}],
+                "structuredContent": value,
+                "isError": False,
+            })
+        except (TypeError, ValueError) as exc:
+            message = f"Invalid arguments: {exc}"
+        except UpstreamError as exc:
+            message = str(exc)
+        except Exception as exc:
+            message = f"Tool failed: {exc}"
+        print(f"tool={tool.name} status=error protocol={protocol}", file=sys.stderr, flush=True)
+        return self._result(request_id, {"content": [{"type": "text", "text": message}], "isError": True})
 
     def run_stdio(self) -> None:
         for line in sys.stdin:
@@ -337,7 +460,7 @@ class McpServer:
                 for name, value in self._cors_headers().items():
                     self.send_header(name, value)
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type, MCP-Protocol-Version, Mcp-Session-Id")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id")
                 self.send_header("Access-Control-Max-Age", "86400")
                 self.end_headers()
 
@@ -383,17 +506,24 @@ class McpServer:
                     response = mcp._error(None, -32700, "Parse error")
                     self._send(400, response)
                     return
-                protocol_version = self.headers.get("MCP-Protocol-Version") or "2025-03-26"
-                if protocol_version not in SUPPORTED_PROTOCOL_VERSIONS:
-                    response = mcp._error(request.get("id") if isinstance(request, dict) else None, -32602, "Unsupported protocol version")
-                    self._send(400, response)
-                    return
-                response = mcp.handle(request)
+                status, response = mcp.dispatch(request, self.headers)
                 if response is None:
-                    self.send_response(202)
+                    self.send_response(status)
                     self.end_headers()
                 else:
-                    self._send(200, response)
+                    self._send(status, response)
+
+            def do_DELETE(self) -> None:
+                # 2026-07-28 has no sessions to terminate; legacy clients may still send DELETE.
+                self._send(405, {"error": "This stateless server has no sessions"}, {"Allow": "GET, POST, OPTIONS"})
+
+            def do_HEAD(self) -> None:
+                path = self.path.split("?", 1)[0]
+                self.send_response(200 if path in ("/", "/health") else 405)
+                if path not in ("/", "/health"):
+                    self.send_header("Allow", "GET, POST, OPTIONS")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
 
             def _send(self, status: int, body: dict, headers: dict[str, str] | None = None) -> None:
                 encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
