@@ -59,7 +59,7 @@ class HttpClient:
         validate_external_url(url, allowed_hosts)
         request_headers = {
             "Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
-            "User-Agent": "luxembourg-mcp/0.6",
+            "User-Agent": "luxembourg-mcp/0.7",
         }
         request_headers.update(headers or {})
         request = Request(
@@ -89,10 +89,11 @@ class HttpClient:
         self,
         url: str,
         *,
+        headers: dict[str, str] | None = None,
         max_bytes: int = MAX_UPSTREAM_BYTES,
         allowed_hosts: set[str] | frozenset[str] | None = None,
     ) -> Any:
-        payload, charset = self.get_bytes(url, max_bytes=max_bytes, allowed_hosts=allowed_hosts)
+        payload, charset = self.get_bytes(url, headers, max_bytes=max_bytes, allowed_hosts=allowed_hosts)
         try:
             return json.loads(payload.decode(charset))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -102,10 +103,11 @@ class HttpClient:
         self,
         url: str,
         *,
+        headers: dict[str, str] | None = None,
         max_bytes: int = MAX_UPSTREAM_BYTES,
         allowed_hosts: set[str] | frozenset[str] | None = None,
     ) -> dict:
-        value = self.get_json_value(url, max_bytes=max_bytes, allowed_hosts=allowed_hosts)
+        value = self.get_json_value(url, headers=headers, max_bytes=max_bytes, allowed_hosts=allowed_hosts)
         if not isinstance(value, dict):
             raise UpstreamError(f"Upstream returned an unexpected JSON shape for {url}")
         return value

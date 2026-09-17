@@ -10,7 +10,8 @@ import threading
 import time
 import unicodedata
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from html import unescape
 from xml.etree import ElementTree
 from xml.parsers import expat
 from typing import Any
@@ -28,7 +29,8 @@ STATEC = "https://lustat.statec.lu/rest"
 VDL_PARKING = "https://feed.vdl.lu/circulation/parking/feed.json"
 CFL_PARKING = "https://pr-mobile-a.cfl.lu/OpenData/ParkAndRide"
 CITA_TRAFFIC = "https://www.cita.lu/info_trafic/datex"
-WATER_LEVELS = "https://inondations.lu/water-level-export-by-time/all?localtime"
+# inondations.lu now redirects to the portal homepage; the export moved to this file.
+WATER_LEVELS = "https://inondations.public.lu/dam-assets/ctie/datas/Water-Levels-LocalTime.csv"
 ACCESSIBILITY = "https://observatoire.accessibilite.public.lu/api/1"
 AIR_DATASET = "air-quality-telemetric-network"
 CHAMBER_BODIES_DATASET = "liste-organes-commissions-et-delegations"
@@ -50,6 +52,17 @@ HOUSING_SLUG = "prix-annonces-des-logements-par-commune"
 ELECTIONS_SLUG = "elections-legislatives-2023-donnees-officieuses"
 CHARGY_SLUG = "bornes-de-chargement-publiques-pour-voitures-electriques"
 WASTE_SLUG = "waste-municipal-waste-collection-calendars-dechets-calendriers-municipaux-de-collecte-des-dechets"
+FUEL_PRICES_SLUG = "comparaison-des-prix-de-carburants-par-motorisation"
+ALERTS_SLUG = "alertes-du-systeme-lu-alert"
+COLLEGE_SLUG = "college-des-bourgmestre-et-echevins-depuis-les-elections-communales-2023"
+POPULATION_SLUG = "registre-national-des-personnes-physiques-rnpp-population-par-commune-population-per-municipality"
+ELECTRICITY_SLUG = "electricity-in-luxembourg-day-ahead-prices"
+FLEX_SLUG = "flex-carsharing-by-cfl-1"
+# MeteoLux publishes the forecast only on its app API (CC0, documented); /hvd carries observations.
+METEOLUX_FORECAST = "https://metapi.ana.lu/api/v1/metapp/weather"
+PHARMACY_ON_DUTY = "https://pharmacie.lu/feed-garde-csv"
+VELOK_STATIONS = "https://www.velok.lu/api-proxy.php"
+PMP_TENDERS = "https://pmp.b2g.etat.lu/api/v2/consultations"
 # The Chargy dataset's resource URL lives on my.chargy.lu and carries a key that
 # Chargy itself publishes openly in the national catalog, so no user key is needed.
 CHARGY_RESOURCE_HOSTS = DATA_PUBLIC_RESOURCE_HOSTS | {"my.chargy.lu"}
@@ -537,26 +550,35 @@ class LuxembourgData:
     def get_water_levels(self, station: str | None = None) -> dict:
         payload, _ = self.http.get_bytes(WATER_LEVELS, {"Accept": "text/csv"})
         rows = [
-            row for row in csv.reader(io.StringIO(payload.decode("utf-8-sig", errors="replace")), delimiter=";")
+            row for row in csv.reader(io.StringIO(payload.decode("utf-8-sig", errors="replace")))
             if any(cell.strip() for cell in row)
         ]
-        headers = {row[0].strip().casefold(): row for row in rows if row and row[0].strip().casefold() in {"name", "number", "unit"}}
-        measurements = [row for row in rows if row and _water_timestamp(row[0]) is not None]
-        if not {"name", "number", "unit"}.issubset(headers) or not measurements:
-            raise UpstreamError("Water-level export contained no measurements")
-        names, numbers, units = headers["name"], headers["number"], headers["unit"]
-        latest = max(measurements, key=lambda row: _water_timestamp(row[0]))
+        # One row per station; the header carries a column per quarter-hourly timestamp.
+        header = next((row for row in rows if row and row[0].strip().casefold() == "name"), None)
+        timestamps = header[3:] if header else []
         results = []
-        for index in range(1, min(len(names), len(latest))):
-            item = {
-                "name": names[index],
-                "station_number": numbers[index] if index < len(numbers) else None,
-                "unit": units[index] if index < len(units) else None,
-                "value": _number(latest[index]),
-            }
-            if not station or _fold(station) in _fold(item["name"]):
-                results.append(item)
-        return {"measured_at": latest[0], "count": len(results), "stations": results, "source": WATER_LEVELS}
+        for row in rows[1:] if header else []:
+            readings = [(timestamps[index], value) for index, value in enumerate(row[3:])
+                        if index < len(timestamps) and value.strip() and _water_timestamp(timestamps[index]) is not None]
+            if not readings:
+                continue
+            measured_at, value = max(readings, key=lambda item: _water_timestamp(item[0]))
+            name = row[0]
+            if station and _fold(station) not in _fold(name):
+                continue
+            results.append({
+                "name": name,
+                "station_number": row[1] or None,
+                "unit": row[2] or None,
+                "value": _number(value),
+                "measured_at": measured_at,
+            })
+        if not results:
+            if station:
+                raise ValueError(f"no water-level station matched: {station}")
+            raise UpstreamError("Water-level export contained no measurements")
+        latest = max(results, key=lambda item: _water_timestamp(item["measured_at"]))
+        return {"measured_at": latest["measured_at"], "count": len(results), "stations": results, "source": WATER_LEVELS}
 
     def get_air_quality(self, city: str | None = None) -> dict:
         dataset = self.get_dataset(AIR_DATASET)
@@ -874,6 +896,382 @@ class LuxembourgData:
         url = f"https://maps.vdl.lu/arcgis/rest/services/OPENDATA/GEOJSON/FeatureServer/{layer}/query?{urlencode(params)}"
         data = self.http.get_json(url)
         return {"category": category, "count": len(data.get("features", [])), "features": data.get("features", []), "source": url}
+
+    def _latest_resource(self, slug: str, fmt: str, ttl: int = 600) -> tuple[dict, dict]:
+        """Newest resource of a dataset that publishes one file per day/quarter (cached: the metadata is large)."""
+        dataset = self._cached(f"dataset:{slug}", ttl, lambda: self.get_dataset(slug))
+        resources = [item for item in dataset.get("resources", []) if item.get("format") == fmt and item.get("url")]
+        if not resources:
+            raise UpstreamError(f"No current {fmt} resource was found in dataset {slug}")
+        return dataset, max(resources, key=lambda item: item.get("last_modified") or "")
+
+    def get_weather_forecast(self, latitude: float = 49.6116, longitude: float = 6.1319, language: str = "en") -> dict:
+        if not 49.0 <= latitude <= 50.5 or not 5.0 <= longitude <= 7.5:
+            raise ValueError("coordinates must be in or near Luxembourg")
+        language = language.lower()
+        if language not in {"en", "fr", "de", "lb"}:
+            raise ValueError("language must be one of en, fr, de, lb")
+        url = f"{METEOLUX_FORECAST}?{urlencode({'lat': latitude, 'long': longitude, 'langcode': language})}"
+        data = self.http.get_json(url)
+        forecast = data.get("forecast") or {}
+
+        def entry(item: dict) -> dict:
+            wind = item.get("wind") or {}
+            shaped = {
+                "time": item.get("date"),
+                "conditions": (item.get("icon") or {}).get("name"),
+                "wind_direction": wind.get("direction") or None,
+                "wind_speed_kmh": wind.get("speed"),
+                "wind_gusts_kmh": wind.get("gusts"),
+                "rain_mm": item.get("rain"),
+                "snow_cm": item.get("snow"),
+            }
+            for key, source in (("temperature_c", "temperature"), ("temperature_min_c", "temperatureMin"), ("temperature_max_c", "temperatureMax")):
+                value = (item.get(source) or {}).get("temperature")
+                if value is not None:
+                    shaped[key] = value
+            for key in ("sunshine", "uvIndex"):
+                if item.get(key) is not None:
+                    shaped["sunshine_hours" if key == "sunshine" else "uv_index"] = item[key]
+            return shaped
+
+        ephemeris = data.get("ephemeris") or {}
+        return {
+            "place": (data.get("city") or {}).get("name"),
+            "canton": (data.get("city") or {}).get("canton"),
+            "current": entry(forecast.get("current") or {}),
+            "hourly": [entry(item) for item in (forecast.get("hourly") or [])],
+            "daily": [entry(item) for item in (forecast.get("daily") or [])],
+            "sunrise": ephemeris.get("sunrise"),
+            "sunset": ephemeris.get("sunset"),
+            "uv_index": ephemeris.get("uvIndex"),
+            "active_warnings": len(data.get("vigilances") or []),
+            "source": url,
+        }
+
+    def get_fuel_prices(self, months: int = 6) -> dict:
+        months = min(max(months, 1), 24)
+        dataset, resource = self._dataset_resource(FUEL_PRICES_SLUG, format="csv")
+        url = resource["url"]
+        payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+        rows = self._decode_csv(payload)
+        labels = {
+            "Essence_E10": ("petrol_e10_eur_per_litre", None),
+            "Diesel_B7": ("diesel_b7_eur_per_litre", None),
+            "Hydrogene": ("hydrogen_eur_per_kg", None),
+            "LPG": ("lpg_eur_per_litre", None),
+            "Electricie_Fournisseur": ("home_electricity_eur_per_kwh", "Electricite_Fournisseur"),
+            "Recharge_AC": ("public_charging_ac_eur_per_kwh", None),
+            "Recharge_DC": ("public_charging_dc_eur_per_kwh", None),
+        }
+        prices = []
+        for row in rows:
+            month = (row.get("Intervalle") or "").strip()
+            if not month:
+                continue
+            entry = {"month": month}
+            for column, (name, alternate) in labels.items():
+                entry[name] = _number(row.get(column) if column in row else row.get(alternate or column))
+            prices.append(entry)
+        prices.reverse()
+        return {"count": len(prices[:months]), "note": "VAT included; prices are national averages published monthly",
+                "prices": prices[:months], "source": url, "dataset": dataset.get("page")}
+
+    def get_public_alerts(self, limit: int = 3, active_only: bool = True, language: str = "en") -> dict:
+        limit = min(max(limit, 1), 10)
+        language = language.lower()
+        if language not in {"en", "fr", "de", "lb"}:
+            raise ValueError("language must be one of en, fr, de, lb")
+        dataset = self._cached(f"dataset:{ALERTS_SLUG}", 600, lambda: self.get_dataset(ALERTS_SLUG))
+        resources = [item for item in dataset.get("resources", []) if item.get("format") == "xml" and item.get("url")]
+        resources.sort(key=lambda item: item.get("last_modified") or "", reverse=True)
+        now = datetime.now(timezone.utc)
+        alerts = []
+        for resource in resources[: limit * 3]:
+            if len(alerts) >= limit:
+                break
+            payload, _ = self.http.get_bytes(resource["url"], allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            try:
+                root = _parse_xml(payload)
+            except ElementTree.ParseError:
+                continue
+            blocks = root.findall("{*}info")
+            info = next((item for item in blocks if (item.findtext("{*}language") or "").lower().startswith(language)), None)
+            if info is None and blocks:
+                info = blocks[0]
+            if info is None:
+                continue
+            expires = info.findtext("{*}expires")
+            if active_only and not _alert_is_active(expires, now):
+                continue
+            alerts.append({
+                "identifier": root.findtext("{*}identifier"),
+                "sent": root.findtext("{*}sent"),
+                "status": root.findtext("{*}status"),
+                "message_type": root.findtext("{*}msgType"),
+                "language": info.findtext("{*}language"),
+                "category": info.findtext("{*}category"),
+                "event": info.findtext("{*}event"),
+                "urgency": info.findtext("{*}urgency"),
+                "severity": info.findtext("{*}severity"),
+                "certainty": info.findtext("{*}certainty"),
+                "effective": info.findtext("{*}effective"),
+                "expires": expires,
+                "headline": info.findtext("{*}headline"),
+                "description": _plain_text(info.findtext("{*}description")),
+                "instruction": _plain_text(info.findtext("{*}instruction")),
+                "areas": [area.findtext("{*}areaDesc") for area in info.findall("{*}area")],
+                "source": resource["url"],
+            })
+        return {"count": len(alerts), "active_only": active_only, "alerts": alerts,
+                "source": dataset.get("page") or f"{CATALOG}/datasets/{ALERTS_SLUG}/", "dataset": dataset.get("page")}
+
+    def get_commune_leaders(self, commune: str | None = None) -> dict:
+        dataset, resource = self._dataset_resource(COLLEGE_SLUG, format="csv")
+        url = resource["url"]
+        rows = self._cached(f"college:{url}", 3600, lambda: self._decode_csv(self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)[0]))
+        needle = _fold(commune) if commune else None
+        leaders = []
+        for row in rows:
+            # A filled end date means the mandate is over, so only blank ones are current.
+            if (row.get("COAC_END_DATE") or "").strip():
+                continue
+            name = (row.get("COM_LABEL") or "").strip()
+            if needle and needle not in _fold(name):
+                continue
+            leaders.append({
+                "commune": name,
+                "commune_code": row.get("COM_CODE"),
+                "role": row.get("MAN_LABEL"),
+                "first_name": row.get("ELU_FIRST_NAME"),
+                "last_name": row.get("ELU_LAST_NAME"),
+                "since": _iso_date(row.get("COAC_START_DATE")),
+            })
+        if needle and not leaders:
+            raise ValueError(f"no current mandate matched commune: {commune}")
+        leaders.sort(key=lambda item: (item["commune"], item["role"] != "Bourgmestre", item["last_name"] or ""))
+        return {"count": len(leaders), "leaders": leaders, "source": url, "dataset": dataset.get("page")}
+
+    def get_commune_population(self, commune: str | None = None) -> dict:
+        dataset, resource = self._latest_resource(POPULATION_SLUG, "csv", ttl=3600)
+        url = resource["url"]
+        rows = self._cached(f"population:{url}", 3600, lambda: self._decode_csv(self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)[0]))
+        needle = _fold(commune) if commune else None
+        communes = []
+        for row in rows:
+            name = (row.get("COMMUNE_NOM") or "").strip()
+            if not name or (needle and needle not in _fold(name)):
+                continue
+            counts = {key: int(_number(row.get(key)) or 0) for key in ("FEMMES_MINEURES", "HOMMES_MINEURS", "FEMMES_MAJEURES", "HOMMES_MAJEURS")}
+            communes.append({
+                "commune": name,
+                "commune_code": row.get("COMMUNE_CODE"),
+                "population": sum(counts.values()),
+                "adults": counts["FEMMES_MAJEURES"] + counts["HOMMES_MAJEURS"],
+                "minors": counts["FEMMES_MINEURES"] + counts["HOMMES_MINEURS"],
+                "female": counts["FEMMES_MINEURES"] + counts["FEMMES_MAJEURES"],
+                "male": counts["HOMMES_MINEURS"] + counts["HOMMES_MAJEURS"],
+            })
+        if needle and not communes:
+            raise ValueError(f"unknown commune: {commune}")
+        communes.sort(key=lambda item: -item["population"])
+        return {"count": len(communes), "total_population": sum(item["population"] for item in communes),
+                "as_of": resource.get("title"), "communes": communes, "source": url, "dataset": dataset.get("page")}
+
+    def get_pharmacies_on_duty(self, date: str | None = None, locality: str | None = None) -> dict:
+        if date is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            raise ValueError("date must be formatted as YYYY-MM-DD")
+        rows = self._cached("pharmacies", 900, lambda: self._decode_csv(self.http.get_bytes(PHARMACY_ON_DUTY, {"Accept": "text/csv"})[0], delimiter=";"))
+        available = sorted({(row.get("Date") or "").strip() for row in rows if row.get("Date")})
+        wanted = date or datetime.now().date().isoformat()
+        needle = _fold(locality) if locality else None
+        pharmacies = []
+        for row in rows:
+            if (row.get("Date") or "").strip() != wanted:
+                continue
+            address = (row.get("Adresse") or "").strip()
+            if needle and needle not in _fold(address):
+                continue
+            pharmacies.append({
+                "name": (row.get("Pharmacie de Garde") or "").strip(),
+                "address": address,
+                "phone": (row.get("Téléphone") or "").strip() or None,
+            })
+        if not pharmacies and date and wanted not in available:
+            raise ValueError(f"the on-duty feed only covers {available[0]} to {available[-1]}" if available else "the on-duty feed is empty")
+        return {"date": wanted, "count": len(pharmacies), "covered_dates": available,
+                "pharmacies": pharmacies, "source": PHARMACY_ON_DUTY}
+
+    def get_electricity_prices(self) -> dict:
+        dataset, resource = self._latest_resource(ELECTRICITY_SLUG, "xml", ttl=3600)
+        url = resource["url"]
+
+        def load() -> dict:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            root = _parse_xml(payload)
+            series = root.findall("{*}TimeSeries")
+            if not series:
+                raise UpstreamError("Day-ahead price document contained no time series")
+            chosen = next(
+                (item for item in series if (item.findtext("{*}classificationSequence_AttributeInstanceComponent.position") or "") == "1"),
+                series[0],
+            )
+            period = chosen.find("{*}Period")
+            start = _entsoe_time(period.find("{*}timeInterval").findtext("{*}start"))
+            minutes = 15 if (period.findtext("{*}resolution") or "") == "PT15M" else 60
+            # curveType A03: a point holds until the next one, so gaps repeat the previous price.
+            by_position = {int(point.findtext("{*}position")): _number(point.findtext("{*}price.amount")) for point in period.findall("{*}Point")}
+            if not by_position or start is None:
+                raise UpstreamError("Day-ahead price document had no usable points")
+            prices, last = [], None
+            for position in range(1, max(by_position) + 1):
+                last = by_position.get(position, last)
+                if last is None:
+                    continue
+                prices.append({"start": (start + timedelta(minutes=minutes * (position - 1))).isoformat().replace("+00:00", "Z"),
+                               "eur_per_mwh": last})
+            return {"currency": chosen.findtext("{*}currency_Unit.name"), "unit": chosen.findtext("{*}price_Measure_Unit.name"),
+                    "resolution_minutes": minutes, "prices": prices}
+
+        data = self._cached(f"electricity:{url}", 3600, load)
+        prices = data["prices"]
+        cheapest = min(prices, key=lambda item: item["eur_per_mwh"])
+        dearest = max(prices, key=lambda item: item["eur_per_mwh"])
+        average = round(sum(item["eur_per_mwh"] for item in prices) / len(prices), 2)
+        return {"day": resource.get("title"), "currency": data["currency"], "unit": data["unit"],
+                "resolution_minutes": data["resolution_minutes"], "count": len(prices),
+                "average_eur_per_mwh": average, "cheapest": cheapest, "most_expensive": dearest,
+                "prices": prices, "source": url, "dataset": dataset.get("page")}
+
+    def get_carsharing(self, query: str | None = None, fuel_type: str | None = None) -> dict:
+        dataset, resource = self._dataset_resource(FLEX_SLUG, format="csv")
+        url = resource["url"]
+        # Refreshed every few minutes, and the versioned URL rotates with it.
+        rows = self._cached(f"flex:{url}", 120, lambda: self._decode_csv(self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)[0], delimiter=";"))
+        needle = _fold(query) if query else None
+        fuel_needle = _fold(fuel_type) if fuel_type else None
+        vehicles = []
+        for row in rows:
+            haystack = _fold(" ".join(str(row.get(key) or "") for key in ("station_name", "station_town", "station_street", "station_zipcode", "brand_name", "model_name")))
+            if needle and needle not in haystack:
+                continue
+            if fuel_needle and fuel_needle not in _fold(row.get("fuel_type") or ""):
+                continue
+            vehicles.append({
+                "station": row.get("station_name"),
+                "town": row.get("station_town"),
+                "address": " ".join(part for part in ((row.get("station_street") or ""), (row.get("station_streetnumber") or "")) if part).strip() or None,
+                "postcode": row.get("station_zipcode"),
+                "vehicle": " ".join(part for part in ((row.get("brand_name") or ""), (row.get("model_name") or "")) if part).strip() or None,
+                "car_type": row.get("car_type"),
+                "fuel_type": row.get("fuel_type"),
+                "latitude": _number(row.get("station_latitude")),
+                "longitude": _number(row.get("station_longitude")),
+            })
+        vehicles.sort(key=lambda item: (item["town"] or "", item["station"] or ""))
+        return {"count": len(vehicles), "note": "the CFL FLEX feed lists currently available vehicles only",
+                "vehicles": vehicles, "source": url, "dataset": dataset.get("page")}
+
+    def get_bike_sharing(self, query: str | None = None, available_only: bool = False) -> dict:
+        def load() -> list[dict]:
+            payload, _ = self.http.get_bytes(VELOK_STATIONS, {"Accept": "application/xml"})
+            root = _parse_xml(payload)
+            stations = []
+            for node in root.iter("station"):
+                values = {child.tag: (child.text or "").strip() for child in node}
+                stations.append({
+                    "station": values.get("nom"),
+                    "locality": values.get("nomlocalite"),
+                    "commune": values.get("nomcommune"),
+                    "address": values.get("lieu") or None,
+                    "latitude": _number(values.get("latitude")),
+                    "longitude": _number(values.get("longitude")),
+                    "bikes": int(_number(values.get("bikes")) or 0),
+                    "ebikes": int(_number(values.get("ebikes")) or 0),
+                    "free_docks": int(_number(values.get("libres")) or 0),
+                    "in_maintenance": (values.get("maintenance") or "").lower() in ("1", "true"),
+                })
+            if not stations:
+                raise UpstreamError("Vël'OK returned no stations")
+            return stations
+
+        stations = self._cached("velok", 120, load)
+        needle = _fold(query) if query else None
+        matches = []
+        for station in stations:
+            if needle and needle not in _fold(" ".join(str(station.get(key) or "") for key in ("station", "locality", "commune", "address"))):
+                continue
+            if available_only and station["bikes"] + station["ebikes"] == 0:
+                continue
+            matches.append(station)
+        matches.sort(key=lambda item: (item["commune"] or "", item["station"] or ""))
+        return {"count": len(matches), "total_bikes": sum(item["bikes"] + item["ebikes"] for item in matches),
+                "stations": matches, "source": VELOK_STATIONS}
+
+    def search_tenders(self, query: str | None = None, limit: int = 10, open_only: bool = True) -> dict:
+        limit = min(max(limit, 1), 50)
+        params: list[tuple[str, Any]] = [("itemsPerPage", limit), ("page", 1)]
+        if open_only:
+            params.append(("statutCalcule", 2))
+        if query:
+            if not query.strip():
+                raise ValueError("query must not be empty")
+            params.append(("search_full[]", query))
+        url = f"{PMP_TENDERS}?{urlencode(params)}"
+        # The API serves its HTML docs page unless JSON-LD is requested explicitly.
+        data = self.http.get_json(url, headers={"Accept": "application/ld+json"})
+        notices = []
+        for item in data.get("hydra:member", []):
+            notices.append({
+                "reference": item.get("reference"),
+                "title": item.get("intitule"),
+                "buyer": item.get("directionServiceLibelle") or item.get("organismeDenomination"),
+                "procedure": item.get("typeProcedureLibelle"),
+                "nature": item.get("naturePrestationLibelle"),
+                "published": item.get("dateMiseEnLigneCalcule"),
+                "deadline": item.get("dateLimiteRemiseOffres"),
+                "cpv_code": item.get("codeCpvPrincipal"),
+                "estimated_value_eur": item.get("valeurEstimee") or None,
+                "url": item.get("urlConsultation"),
+            })
+        return {"total": data.get("hydra:totalItems", len(notices)), "count": len(notices),
+                "open_only": open_only, "tenders": notices, "source": url}
+
+
+def _alert_is_active(expires: str | None, now: datetime) -> bool:
+    if not expires:
+        return True
+    try:
+        moment = datetime.fromisoformat(expires)
+    except ValueError:
+        return True
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment >= now
+
+
+def _plain_text(value: str | None) -> str | None:
+    """CAP descriptions arrive as small HTML fragments; agents want the text."""
+    if not value:
+        return None
+    text = re.sub(r"<br\s*/?>|</p>", "\n", value)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip() or None
+
+
+def _iso_date(value: str | None) -> str | None:
+    try:
+        return datetime.strptime((value or "").strip(), "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def _entsoe_time(value: str | None) -> datetime | None:
+    try:
+        return datetime.strptime((value or "").strip(), "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _number(value: str | None) -> int | float | None:

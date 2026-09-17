@@ -32,6 +32,16 @@ TOOL_CASES = {
     "get_election_results": {},
     "get_ev_charging": {"query": "Esch", "available_only": True},
     "get_waste_collections": {"commune": "Bech", "waste_type": "verre", "limit": 5},
+    "get_weather_forecast": {"latitude": 49.6116, "longitude": 6.1319, "language": "en"},
+    "get_fuel_prices": {"months": 3},
+    "get_public_alerts": {"limit": 2, "active_only": False, "language": "en"},
+    "get_commune_leaders": {"commune": "Bech"},
+    "get_commune_population": {"commune": "Bertrange"},
+    "get_pharmacies_on_duty": {"locality": "Luxembourg"},
+    "get_electricity_prices": {},
+    "get_carsharing": {"query": "Mamer", "fuel_type": "electric"},
+    "get_bike_sharing": {"query": "Esch", "available_only": True},
+    "search_tenders": {"query": "construction", "limit": 3},
 }
 
 
@@ -54,7 +64,7 @@ class EveryToolContractTests(unittest.TestCase):
 
     def test_every_registered_tool_has_a_contract_case(self):
         self.assertEqual(set(self.server.tools), set(TOOL_CASES))
-        self.assertEqual(len(TOOL_CASES), 28)
+        self.assertEqual(len(TOOL_CASES), 38)
 
     def test_every_tool_routes_arguments_and_returns_structured_content(self):
         for request_id, (name, arguments) in enumerate(TOOL_CASES.items(), start=1):

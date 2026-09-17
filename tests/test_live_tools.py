@@ -122,6 +122,58 @@ class EveryToolLiveTests(unittest.TestCase):
         self.assertGreaterEqual(data["count"], 1)
         self.assertTrue(all(len(item["date"]) == 10 for item in data["collections"]))
 
+    def test_get_weather_forecast(self):
+        data = self.call("get_weather_forecast", {"language": "en"})
+        self.assertEqual(len(data["daily"]), 5)
+        self.assertIsNotNone(data["current"]["temperature_c"])
+        self.assertRegex(data["sunset"], r"^\d{2}:\d{2}$")
+
+    def test_get_fuel_prices(self):
+        data = self.call("get_fuel_prices", {"months": 3})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertGreater(data["prices"][0]["diesel_b7_eur_per_litre"], 0)
+
+    def test_get_public_alerts(self):
+        data = self.call("get_public_alerts", {"limit": 2, "active_only": False})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(data["alerts"][0]["event"])
+
+    def test_get_commune_leaders(self):
+        data = self.call("get_commune_leaders", {"commune": "Bech"})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertIn("Bourgmestre", {item["role"] for item in data["leaders"]})
+
+    def test_get_commune_population(self):
+        data = self.call("get_commune_population", {"commune": "Bertrange"})
+        self.assertEqual(data["count"], 1)
+        self.assertGreater(data["communes"][0]["population"], 1000)
+
+    def test_get_pharmacies_on_duty(self):
+        data = self.call("get_pharmacies_on_duty")
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(data["pharmacies"][0]["address"])
+
+    def test_get_electricity_prices(self):
+        data = self.call("get_electricity_prices")
+        self.assertGreaterEqual(data["count"], 24)
+        self.assertEqual(data["currency"], "EUR")
+        self.assertLessEqual(data["cheapest"]["eur_per_mwh"], data["most_expensive"]["eur_per_mwh"])
+
+    def test_get_carsharing(self):
+        data = self.call("get_carsharing", {"fuel_type": "electric"})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(data["vehicles"][0]["station"])
+
+    def test_get_bike_sharing(self):
+        data = self.call("get_bike_sharing", {"query": "Esch"})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(data["stations"][0]["station"])
+
+    def test_search_tenders(self):
+        data = self.call("search_tenders", {"limit": 3})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertTrue(data["tenders"][0]["title"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -44,12 +44,12 @@ class ModernCoreTests(unittest.TestCase):
         self.assertIsInstance(result["ttlMs"], int)
         self.assertGreaterEqual(result["ttlMs"], 0)
         self.assertEqual(result["cacheScope"], "public")
-        self.assertIn("28 tools", result["instructions"])
+        self.assertIn("38 tools", result["instructions"])
 
     def test_tools_list_is_cacheable_and_identifies_server(self):
         result = self.server.handle(modern("tools/list"))["result"]
         self.assertEqual(result["resultType"], "complete")
-        self.assertEqual(len(result["tools"]), 28)
+        self.assertEqual(len(result["tools"]), 38)
         self.assertEqual([tool["name"] for tool in result["tools"]], [tool["name"] for tool in self.server.handle(modern("tools/list"))["result"]["tools"]])
         self.assertGreater(result["ttlMs"], 0)
         self.assertEqual(result["cacheScope"], "public")
@@ -105,7 +105,7 @@ class ModernCoreTests(unittest.TestCase):
         responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual(responses[0]["id"], "probe")
         self.assertIn(MODERN, responses[0]["result"]["supportedVersions"])
-        self.assertEqual(len(responses[1]["result"]["tools"]), 28)
+        self.assertEqual(len(responses[1]["result"]["tools"]), 38)
 
 
 class ModernHttpTests(unittest.TestCase):
@@ -200,7 +200,7 @@ class ModernHttpTests(unittest.TestCase):
         status, body, _ = self.send({"jsonrpc": "2.0", "method": "notifications/initialized"}, {"MCP-Protocol-Version": "2025-11-25"})
         self.assertEqual((status, body), (202, None))
         status, body, _ = self.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, {"MCP-Protocol-Version": "2025-11-25"})
-        self.assertEqual((status, len(body["result"]["tools"])), (200, 28))
+        self.assertEqual((status, len(body["result"]["tools"])), (200, 38))
 
     def test_delete_and_head_on_mcp_endpoint_are_method_not_allowed(self):
         for method in ("DELETE", "HEAD"):

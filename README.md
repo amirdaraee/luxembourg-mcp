@@ -8,10 +8,10 @@ Keyless Model Context Protocol access to Luxembourg public data.
 
 **Hosted endpoint — no install needed:** point any MCP client at `https://mcp.luxembourg-mcp.com/mcp` (streamable HTTP). Or run it yourself with `uvx luxembourg-mcp`. Website: [luxembourg-mcp.com](https://luxembourg-mcp.com)
 
-Luxembourg MCP turns fragmented public APIs and open datasets into 28 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
+Luxembourg MCP turns fragmented public APIs and open datasets into 38 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
 
-- 28 MCP tools
-- 18 public data systems
+- 38 MCP tools
+- 26 public data systems
 - No API keys or accounts
 - No scraping
 - Source URL returned with every result
@@ -57,6 +57,16 @@ Luxembourg MCP applies that idea to the Grand Duchy. It is an independent implem
 | `get_election_results` | CTIE | 2023 legislative election results |
 | `get_ev_charging` | Chargy | Public EV charging with live availability |
 | `get_waste_collections` | Environment Administration | Upcoming waste-collection dates by commune |
+| `get_weather_forecast` | MeteoLux | Official forecast, UV index, sunrise and sunset |
+| `get_fuel_prices` | Ministère de l'Économie | Monthly fuel, hydrogen and EV-charging prices |
+| `get_public_alerts` | LU-Alert | National warnings, including food recalls |
+| `get_commune_leaders` | Ministère des Affaires intérieures | Current mayor and aldermen per commune |
+| `get_commune_population` | CTIE | Resident population by commune, age group and sex |
+| `get_pharmacies_on_duty` | Pharmacie.lu | Pharmacies on duty, with address and phone |
+| `get_electricity_prices` | Open Data Lëtzebuerg | Day-ahead power prices per quarter hour |
+| `get_carsharing` | CFL Mobility | Available FLEX carsharing vehicles |
+| `get_bike_sharing` | Vël'OK | Live bike-sharing availability in the south |
+| `search_tenders` | Portail des marchés publics | Open public procurement notices |
 
 ## Quick start
 

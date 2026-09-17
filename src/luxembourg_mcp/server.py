@@ -26,8 +26,8 @@ MODERN_PROTOCOL_VERSIONS = ("2026-07-28",)
 LEGACY_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SUPPORTED_PROTOCOL_VERSIONS = MODERN_PROTOCOL_VERSIONS + LEGACY_PROTOCOL_VERSIONS
 PROTOCOL_VERSION = LEGACY_PROTOCOL_VERSIONS[0]  # offered to `initialize` requests for unknown versions
-SERVER_INFO = {"name": "luxembourg-mcp", "version": "0.6.0"}
-INSTRUCTIONS = "Keyless access to official Luxembourg public data through 28 tools. Results include upstream source URLs."
+SERVER_INFO = {"name": "luxembourg-mcp", "version": "0.7.0"}
+INSTRUCTIONS = "Keyless access to official Luxembourg public data through 38 tools. Results include upstream source URLs."
 TOOLS_TTL_MS = 60 * 60 * 1000  # the tool list only changes between releases
 HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
@@ -275,6 +275,16 @@ class McpServer:
                 Tool("get_election_results", "Get machine-readable 2023 legislative election results, national and per circonscription.", _object_schema({}), source.get_election_results),
                 Tool("get_ev_charging", "Get Chargy public EV charging stations with live connector availability.", _object_schema({"query": {"type": "string", "description": "Optional name or address filter"}, "available_only": {"type": "boolean", "default": False}}), source.get_ev_charging),
                 Tool("get_waste_collections", "Get upcoming municipal waste-collection dates for a Luxembourg commune.", _object_schema({"commune": {"type": "string"}, "street": {"type": "string", "description": "Optional street-name filter; commune-wide rows always match"}, "waste_type": {"type": "string", "description": "Optional collection-type filter such as verre, papier, biodechets"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}, ["commune"]), source.get_waste_collections),
+                Tool("get_weather_forecast", "Get the official MeteoLux forecast for a place in Luxembourg: current conditions, 24 hours, 5 days, UV index, sunrise and sunset.", _object_schema({"latitude": {"type": "number", "default": 49.6116}, "longitude": {"type": "number", "default": 6.1319}, "language": {"type": "string", "enum": ["en", "fr", "de", "lb"], "default": "en"}}), source.get_weather_forecast),
+                Tool("get_fuel_prices", "Get official monthly Luxembourg prices for petrol, diesel, hydrogen, LPG, home electricity and public EV charging.", _object_schema({"months": {"type": "integer", "minimum": 1, "maximum": 24, "default": 6}}), source.get_fuel_prices),
+                Tool("get_public_alerts", "Get recent LU-Alert public warnings: floods, storms, food recalls and other national alerts.", _object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3}, "active_only": {"type": "boolean", "default": True}, "language": {"type": "string", "enum": ["en", "fr", "de", "lb"], "default": "en"}}), source.get_public_alerts),
+                Tool("get_commune_leaders", "Get the current mayor and aldermen of Luxembourg communes.", _object_schema({"commune": {"type": "string", "description": "Optional commune-name filter"}}), source.get_commune_leaders),
+                Tool("get_commune_population", "Get official resident population by commune, split by adults, minors and sex.", _object_schema({"commune": {"type": "string", "description": "Optional commune-name filter"}}), source.get_commune_population),
+                Tool("get_pharmacies_on_duty", "Get the pharmacies on duty in Luxembourg for a date, with address and phone number.", _object_schema({"date": {"type": "string", "description": "YYYY-MM-DD within the published window; defaults to today"}, "locality": {"type": "string", "description": "Optional locality or address filter"}}), source.get_pharmacies_on_duty),
+                Tool("get_electricity_prices", "Get Luxembourg day-ahead wholesale electricity prices per quarter hour, with the cheapest and most expensive slots.", _object_schema({}), source.get_electricity_prices),
+                Tool("get_carsharing", "Find currently available CFL FLEX carsharing vehicles by station, town or fuel type.", _object_schema({"query": {"type": "string", "description": "Optional station, town, address or model filter"}, "fuel_type": {"type": "string", "description": "Optional fuel filter such as electric or diesel"}}), source.get_carsharing),
+                Tool("get_bike_sharing", "Get live Vel'OK bike-sharing availability at stations in southern Luxembourg.", _object_schema({"query": {"type": "string", "description": "Optional station, locality or commune filter"}, "available_only": {"type": "boolean", "default": False}}), source.get_bike_sharing),
+                Tool("search_tenders", "Search Luxembourg public procurement notices with deadlines, buyers and CPV codes.", _object_schema({"query": {"type": "string", "description": "Optional full-text filter"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}, "open_only": {"type": "boolean", "default": True}}), source.search_tenders),
             ]
         }
 

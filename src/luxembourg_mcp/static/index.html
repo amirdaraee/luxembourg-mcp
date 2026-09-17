@@ -6,7 +6,7 @@
   <meta name="description" content="A keyless MCP server for official Luxembourg public data: laws, statistics, mobility, geodata, environment, and parliament.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Luxembourg MCP - official public data for agents">
-  <meta property="og:description" content="28 MCP tools over 18 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
+  <meta property="og:description" content="38 MCP tools over 26 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
   <meta property="og:url" content="https://luxembourg-mcp.com/">
   <meta property="og:image" content="https://luxembourg-mcp.com/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -25,7 +25,7 @@
     "@type": "SoftwareApplication",
     "name": "Luxembourg MCP",
     "url": "https://luxembourg-mcp.com/",
-    "description": "Keyless MCP server for official Luxembourg public data: 28 tools over 18 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
+    "description": "Keyless MCP server for official Luxembourg public data: 38 tools over 26 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
@@ -282,8 +282,8 @@
           <button class="copy" id="copy" type="button" aria-label="Copy MCP endpoint URL">Copy</button>
         </div>
         <div class="metrics">
-          <div><strong>28</strong><span>tools</span></div>
-          <div><strong>18</strong><span>official systems</span></div>
+          <div><strong>38</strong><span>tools</span></div>
+          <div><strong>26</strong><span>official systems</span></div>
           <div><strong>0</strong><span>API keys</span></div>
         </div>
       </div>
@@ -293,7 +293,7 @@
   <main class="wrap catalogue">
     <div class="section-head">
       <h2><span class="no">01</span> Tool catalogue</h2>
-      <p class="count">Showing <b id="shown">28</b> of 28 tools</p>
+      <p class="count">Showing <b id="shown">38</b> of 38 tools</p>
     </div>
 
     <div class="controls">
@@ -341,6 +341,16 @@
       <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>CTIE</b></span><span class="keyless">Keyless</span></div><h3>get_election_results</h3><p>2023 legislative results, national and per circonscription.</p><span class="arguments">no arguments</span></article>
       <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Chargy</b></span><span class="keyless">Keyless</span></div><h3>get_ev_charging</h3><p>Public EV charging stations with live connector availability.</p><span class="arguments">query? · available_only?</span></article>
       <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>Environnement</b></span><span class="keyless">Keyless</span></div><h3>get_waste_collections</h3><p>Upcoming municipal waste-collection dates by commune.</p><span class="arguments">commune · street? · waste_type? · limit?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>MeteoLux</b></span><span class="keyless">Keyless</span></div><h3>get_weather_forecast</h3><p>Official forecast: next hours, five days, UV index, sunrise.</p><span class="arguments">latitude? · longitude? · language?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>Ministère de l'Économie</b></span><span class="keyless">Keyless</span></div><h3>get_fuel_prices</h3><p>Monthly prices for petrol, diesel, hydrogen, LPG and EV charging.</p><span class="arguments">months?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>LU-Alert</b></span><span class="keyless">Keyless</span></div><h3>get_public_alerts</h3><p>National public warnings: floods, storms and food recalls.</p><span class="arguments">limit? · active_only? · language?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Affaires intérieures</b></span><span class="keyless">Keyless</span></div><h3>get_commune_leaders</h3><p>Current mayor and aldermen of each commune.</p><span class="arguments">commune?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>CTIE</b></span><span class="keyless">Keyless</span></div><h3>get_commune_population</h3><p>Resident population by commune, split by age group and sex.</p><span class="arguments">commune?</span></article>
+      <article class="tool-card" data-source="environment"><div class="tool-top"><span class="source-name"><b>Pharmacie.lu</b></span><span class="keyless">Keyless</span></div><h3>get_pharmacies_on_duty</h3><p>Pharmacies on duty today, with address and phone number.</p><span class="arguments">date? · locality?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>Open Data Lëtzebuerg</b></span><span class="keyless">Keyless</span></div><h3>get_electricity_prices</h3><p>Day-ahead power prices per quarter hour, cheapest slot included.</p><span class="arguments">no arguments</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CFL FLEX</b></span><span class="keyless">Keyless</span></div><h3>get_carsharing</h3><p>Currently available FLEX carsharing vehicles by station or fuel.</p><span class="arguments">query? · fuel_type?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Vël'OK</b></span><span class="keyless">Keyless</span></div><h3>get_bike_sharing</h3><p>Live bike and e-bike availability at southern stations.</p><span class="arguments">query? · available_only?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Marchés publics</b></span><span class="keyless">Keyless</span></div><h3>search_tenders</h3><p>Open public procurement notices with deadlines and CPV codes.</p><span class="arguments">query? · limit? · open_only?</span></article>
     </section>
     <p class="empty" id="empty">No tools match <b id="empty-q">this search</b>.</p>
   </main>
@@ -352,7 +362,7 @@
         <p>The server speaks standard MCP over HTTP. Point any MCP-capable client at the endpoint above — the URL is read from the browser, so it matches wherever you're running it.</p>
         <ol class="steps">
           <li>Copy the config into your client's <b>MCP servers</b> settings.</li>
-          <li>Reload the client so it discovers all <b>28</b> tools across <strong>18</strong> official systems.</li>
+          <li>Reload the client so it discovers all <b>38</b> tools across <strong>26</strong> official systems.</li>
           <li>Ask your agent for anything Luxembourg — <b>no key required</b>.</li>
         </ol>
       </div>

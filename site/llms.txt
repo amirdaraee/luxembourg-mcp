@@ -1,6 +1,6 @@
 # Luxembourg MCP
 
-> Keyless Model Context Protocol (MCP) server for official Luxembourg public data: 27 read-only tools over 18 public systems — legislation, statistics, live mobility, environment, parliament, elections, housing prices, addresses, geodata, and the national open-data catalogue. No API keys, accounts, or scraping; every response includes its official upstream source URL.
+> Keyless Model Context Protocol (MCP) server for official Luxembourg public data: 38 read-only tools over 26 public systems — legislation, statistics, live mobility, environment, parliament, elections, housing prices, addresses, geodata, and the national open-data catalogue. No API keys, accounts, or scraping; every response includes its official upstream source URL.
 
 ## Connect
 

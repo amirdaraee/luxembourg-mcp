@@ -47,7 +47,9 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result["collections"]], ["1"])
 
     def test_water_levels_station_filter_ignores_accents(self):
-        payload = "Name;Ettelbrück / Alzette;Remich\nNumber;7;8\nUnit;cm;cm\n10.07.2026 20:00;68.4;349\n".encode()
+        payload = ('"Name","Number","Unit","10.07.2026 19:45","10.07.2026 20:00"\n'
+                   '"Ettelbrück / Alzette","7","cm","68.0","68.4"\n'
+                   '"Remich","8","cm","348","349"\n').encode()
         result = LuxembourgData(FakeHttp([payload])).get_water_levels("Ettelbruck")
         self.assertEqual([item["name"] for item in result["stations"]], ["Ettelbrück / Alzette"])
 
@@ -64,11 +66,21 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["alerts"][0]["DESCRIPTION"], "Heat warning")
 
-    def test_water_levels_returns_latest_filtered_station(self):
-        payload = b"Unit;cm;cm\nName;Mersch;Remich\nNumber;7;8\n10.07.2026 20:00;68.4;349\n10.07.2026 19:45;67.9;348\n\n"
-        result = LuxembourgData(FakeHttp([payload])).get_water_levels("Mersch")
-        self.assertEqual(result["stations"], [{"name": "Mersch", "station_number": "7", "unit": "cm", "value": 68.4}])
+    def test_water_levels_returns_latest_reading_per_station(self):
+        # Stations report at different times, so trailing blanks mark readings that have not landed yet.
+        payload = ('"Name","Number","Unit","10.07.2026 19:45","10.07.2026 20:00"\n'
+                   '"Mersch","7","cm","67.9","68.4"\n'
+                   '"Remich","8","cm","348",""\n\n').encode()
+        result = LuxembourgData(FakeHttp([payload])).get_water_levels()
         self.assertEqual(result["measured_at"], "10.07.2026 20:00")
+        self.assertEqual(result["stations"][0], {"name": "Mersch", "station_number": "7", "unit": "cm",
+                                                 "value": 68.4, "measured_at": "10.07.2026 20:00"})
+        self.assertEqual(result["stations"][1], {"name": "Remich", "station_number": "8", "unit": "cm",
+                                                 "value": 348, "measured_at": "10.07.2026 19:45"})
+
+    def test_water_levels_without_measurements_is_an_upstream_error(self):
+        with self.assertRaises(UpstreamError):
+            LuxembourgData(FakeHttp([b'"Name","Number","Unit"\n'])).get_water_levels()
 
     def test_traffic_parses_namespaced_datex(self):
         payload = b'''<d2LogicalModel xmlns="http://datex2.eu/schema/2/2_0"><siteMeasurements>
@@ -312,9 +324,9 @@ class ProtocolTests(unittest.TestCase):
         response = self.server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
         self.assertEqual(response["result"]["protocolVersion"], "2025-11-25")
 
-    def test_lists_twenty_eight_tools(self):
+    def test_lists_every_registered_tool(self):
         response = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        self.assertEqual(len(response["result"]["tools"]), 28)
+        self.assertEqual(len(response["result"]["tools"]), 38)
 
     def test_notifications_have_no_response(self):
         self.assertIsNone(self.server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
@@ -385,8 +397,8 @@ class ProtocolTests(unittest.TestCase):
         page = catalog_html().decode("utf-8")
         self.assertIn("Luxembourg MCP", page)
         self.assertIn("search_datasets", page)
-        self.assertEqual(page.count('class="tool-card"'), 28)
-        self.assertIn("<strong>18</strong> official systems", page)
+        self.assertEqual(page.count('class="tool-card"'), 38)
+        self.assertIn("<strong>26</strong> official systems", page)
 
 
 if __name__ == "__main__":
