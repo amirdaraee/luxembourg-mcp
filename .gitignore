@@ -15,5 +15,8 @@ build/
 node_modules/
 .wrangler/
 
+# local tooling
+.serena/
+
 # local experiments
 sandbox/
