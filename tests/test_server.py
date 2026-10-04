@@ -326,7 +326,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_lists_every_registered_tool(self):
         response = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        self.assertEqual(len(response["result"]["tools"]), 38)
+        self.assertEqual(len(response["result"]["tools"]), 44)
 
     def test_notifications_have_no_response(self):
         self.assertIsNone(self.server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
@@ -397,8 +397,8 @@ class ProtocolTests(unittest.TestCase):
         page = catalog_html().decode("utf-8")
         self.assertIn("Luxembourg MCP", page)
         self.assertIn("search_datasets", page)
-        self.assertEqual(page.count('class="tool-card"'), 38)
-        self.assertIn("<strong>26</strong> official systems", page)
+        self.assertEqual(page.count('class="tool-card"'), 44)
+        self.assertIn("<strong>28</strong> official systems", page)
 
 
 if __name__ == "__main__":

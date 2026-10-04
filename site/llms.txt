@@ -1,6 +1,6 @@
 # Luxembourg MCP
 
-> Keyless Model Context Protocol (MCP) server for official Luxembourg public data: 38 read-only tools over 26 public systems — legislation, statistics, live mobility, environment, parliament, elections, housing prices, addresses, geodata, and the national open-data catalogue. No API keys, accounts, or scraping; every response includes its official upstream source URL.
+> Keyless Model Context Protocol (MCP) server for official Luxembourg public data: 44 read-only tools over 28 public systems — legislation, statistics, live mobility, environment, parliament, elections, housing prices, addresses, geodata, and the national open-data catalogue. No API keys, accounts, or scraping; every response includes its official upstream source URL.
 
 ## Connect
 
@@ -8,12 +8,12 @@
 - Run locally: `uvx luxembourg-mcp` (Python 3.11+, zero dependencies, MIT license)
 - Client config: `{"mcpServers": {"luxembourg": {"url": "https://mcp.luxembourg-mcp.com/mcp"}}}`
 
-## Tools (27)
+## Tools (44)
 
-Laws and government: search_legislation (Legilux), search_chamber_bodies, search_parliamentary_questions (Chamber of Deputies), get_election_results (2023 legislative), get_accessibility_figures, get_accessibility_audits, get_public_holidays.
-Statistics: search_statistics, get_statistics (STATEC LUSTAT SDMX), get_housing_prices (Observatoire de l'Habitat, by commune).
-Mobility: get_city_parking, list_cfl_parking, get_cfl_parking (live P+R), get_traffic (CITA motorways), search_transit_stops (GTFS), get_city_mobility, get_ev_charging (Chargy, live availability).
-Environment and weather: get_weather_alerts, get_weather_observations (MeteoLux at Findel), get_water_levels, get_air_quality.
+Laws and government: search_legislation (Legilux), search_chamber_bodies, search_parliamentary_questions, get_plenary_votes, get_deputies (Chamber of Deputies), get_election_results (2023 legislative), get_commune_leaders, get_accessibility_figures, get_accessibility_audits, get_public_holidays, search_tenders (public procurement), lookup_luxembourgish (LOD dictionary).
+Statistics and economy: search_statistics, get_statistics (STATEC LUSTAT SDMX), get_housing_prices (Observatoire de l'Habitat), get_commune_population, get_fuel_prices, get_electricity_prices, get_electricity_grid (ENTSO-E actuals), get_unemployment (ADEM).
+Mobility: get_city_parking, list_cfl_parking, get_cfl_parking (live P+R), get_traffic, get_traffic_events (CITA motorways), search_transit_stops (GTFS), get_city_mobility, get_ev_charging (Chargy), get_carsharing (CFL FLEX), get_bike_sharing (Vël'OK).
+Environment, weather and health: get_weather_alerts, get_weather_observations, get_weather_forecast (MeteoLux), get_water_levels, get_air_quality, get_waste_collections, get_public_alerts (LU-Alert), get_pharmacies_on_duty.
 Geodata and addresses: geocode_address, reverse_geocode, list_geo_collections, get_geo_features (Geoportail).
 Open-data catalogue: search_datasets, get_dataset (data.public.lu).
 

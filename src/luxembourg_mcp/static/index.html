@@ -6,7 +6,7 @@
   <meta name="description" content="A keyless MCP server for official Luxembourg public data: laws, statistics, mobility, geodata, environment, and parliament.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Luxembourg MCP - official public data for agents">
-  <meta property="og:description" content="38 MCP tools over 26 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
+  <meta property="og:description" content="44 MCP tools over 28 official systems: laws, statistics, mobility, environment, parliament, addresses, and the national open-data catalogue. No API keys.">
   <meta property="og:url" content="https://luxembourg-mcp.com/">
   <meta property="og:image" content="https://luxembourg-mcp.com/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -25,7 +25,7 @@
     "@type": "SoftwareApplication",
     "name": "Luxembourg MCP",
     "url": "https://luxembourg-mcp.com/",
-    "description": "Keyless MCP server for official Luxembourg public data: 38 tools over 26 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
+    "description": "Keyless MCP server for official Luxembourg public data: 44 tools over 28 public systems covering laws, statistics, mobility, environment, parliament, elections, housing prices, addresses, and geodata.",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
@@ -200,6 +200,16 @@
     .source-name{ display:inline-flex; align-items:center; gap:7px; min-width:0; font:600 11px/1.2 "IBM Plex Mono", monospace; letter-spacing:.02em; text-transform:uppercase; color:var(--source-color); }
     .source-name::before{ content:""; width:7px; height:7px; border-radius:2px; background:var(--source-color); flex:none; }
     .source-name b{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tool-top .source-name{ margin-right:auto; }
+    /* Status lights: the label lives in ::after so the catalogue search never matches it. */
+    .health{ flex:none; display:inline-flex; align-items:center; gap:6px; font:600 10px/1 "IBM Plex Mono", monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); --light:var(--faint); }
+    .health::before{ content:""; width:8px; height:8px; border-radius:50%; background:var(--light); box-shadow:0 0 0 3px color-mix(in srgb, var(--light) 22%, transparent); }
+    .health::after{ content:attr(data-label); }
+    .health[data-state="ok"]{ --light:var(--c-environment); }
+    .health[data-state="degraded"]{ --light:var(--c-mobility); color:var(--c-mobility); }
+    .health[data-state="down"]{ --light:var(--red); color:var(--red); }
+    .health-summary{ display:inline-flex; align-items:center; gap:7px; }
+    .health-summary[hidden]{ display:none; }
     .keyless{ flex:none; font:600 10px/1 "IBM Plex Mono", monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); border:1px solid var(--line-2); border-radius:3px; padding:4px 6px; }
     .tool-card h3{ margin:0 0 8px; font:600 17px/1.2 "IBM Plex Mono", monospace; letter-spacing:-.01em; overflow-wrap:anywhere; }
     .tool-card p{ margin:0; color:var(--muted); font-size:14px; }
@@ -282,8 +292,8 @@
           <button class="copy" id="copy" type="button" aria-label="Copy MCP endpoint URL">Copy</button>
         </div>
         <div class="metrics">
-          <div><strong>38</strong><span>tools</span></div>
-          <div><strong>26</strong><span>official systems</span></div>
+          <div><strong>44</strong><span>tools</span></div>
+          <div><strong>28</strong><span>official systems</span></div>
           <div><strong>0</strong><span>API keys</span></div>
         </div>
       </div>
@@ -293,7 +303,7 @@
   <main class="wrap catalogue">
     <div class="section-head">
       <h2><span class="no">01</span> Tool catalogue</h2>
-      <p class="count">Showing <b id="shown">38</b> of 38 tools</p>
+      <p class="count">Showing <b id="shown">44</b> of 44 tools <span class="health-summary" id="health-summary" hidden></span></p>
     </div>
 
     <div class="controls">
@@ -351,6 +361,12 @@
       <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CFL FLEX</b></span><span class="keyless">Keyless</span></div><h3>get_carsharing</h3><p>Currently available FLEX carsharing vehicles by station or fuel.</p><span class="arguments">query? · fuel_type?</span></article>
       <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>Vël'OK</b></span><span class="keyless">Keyless</span></div><h3>get_bike_sharing</h3><p>Live bike and e-bike availability at southern stations.</p><span class="arguments">query? · available_only?</span></article>
       <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Marchés publics</b></span><span class="keyless">Keyless</span></div><h3>search_tenders</h3><p>Open public procurement notices with deadlines and CPV codes.</p><span class="arguments">query? · limit? · open_only?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Chambre des Députés</b></span><span class="keyless">Keyless</span></div><h3>get_plenary_votes</h3><p>How each party and deputy voted in plenary sessions.</p><span class="arguments">query? · deputy? · limit?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Chambre des Députés</b></span><span class="keyless">Keyless</span></div><h3>get_deputies</h3><p>Current deputies with party, constituency and official email.</p><span class="arguments">query?</span></article>
+      <article class="tool-card" data-source="government"><div class="tool-top"><span class="source-name"><b>Lëtzebuerger Online Dictionnaire</b></span><span class="keyless">Keyless</span></div><h3>lookup_luxembourgish</h3><p>Translate Luxembourgish words, with pronunciation and examples.</p><span class="arguments">word · language? · limit?</span></article>
+      <article class="tool-card" data-source="mobility"><div class="tool-top"><span class="source-name"><b>CITA</b></span><span class="keyless">Keyless</span></div><h3>get_traffic_events</h3><p>Live roadworks, lane closures and incidents on motorways.</p><span class="arguments">road?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>Open Data Lëtzebuerg</b></span><span class="keyless">Keyless</span></div><h3>get_electricity_grid</h3><p>Daily power load, generation mix and cross-border flows.</p><span class="arguments">include_series?</span></article>
+      <article class="tool-card" data-source="statistics"><div class="tool-top"><span class="source-name"><b>ADEM</b></span><span class="keyless">Keyless</span></div><h3>get_unemployment</h3><p>Monthly registered jobseekers and job vacancies, by commune too.</p><span class="arguments">months? · commune?</span></article>
     </section>
     <p class="empty" id="empty">No tools match <b id="empty-q">this search</b>.</p>
   </main>
@@ -362,7 +378,7 @@
         <p>The server speaks standard MCP over HTTP. Point any MCP-capable client at the endpoint above — the URL is read from the browser, so it matches wherever you're running it.</p>
         <ol class="steps">
           <li>Copy the config into your client's <b>MCP servers</b> settings.</li>
-          <li>Reload the client so it discovers all <b>38</b> tools across <strong>26</strong> official systems.</li>
+          <li>Reload the client so it discovers all <b>44</b> tools across <strong>28</strong> official systems.</li>
           <li>Ask your agent for anything Luxembourg — <b>no key required</b>.</li>
         </ol>
       </div>
@@ -407,6 +423,53 @@
     }
     document.querySelector('#endpoint').textContent = endpoint;
     document.querySelector('#config-endpoint').textContent = endpoint;
+
+    // Status lights: the server probes each upstream at most every 10 minutes and caches the result.
+    const statusUrl = isLocal || window.location.hostname === 'mcp.luxembourg-mcp.com'
+      ? `${window.location.origin}/status` : 'https://mcp.luxembourg-mcp.com/status';
+    const healthLabels = { ok: 'Up', degraded: 'Degraded', down: 'Down', unknown: 'Unknown' };
+    function ago(iso){
+      const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+      return minutes < 1 ? 'just now' : minutes === 1 ? '1 min ago' : `${minutes} min ago`;
+    }
+    async function loadHealth(){
+      const summary = document.querySelector('#health-summary');
+      let data;
+      try {
+        const response = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        data = await response.json();
+      } catch (e) {
+        // No lights rather than a wall of grey ones when the status endpoint itself is unreachable.
+        summary.hidden = false;
+        summary.textContent = '· live status unavailable';
+        return;
+      }
+      document.querySelectorAll('.tool-card').forEach((card) => {
+        const tool = data.tools[card.querySelector('h3').textContent.trim()];
+        let light = card.querySelector('.health');
+        if (!tool) { if (light) light.remove(); return; }
+        if (!light) {
+          light = document.createElement('span');
+          light.className = 'health';
+          card.querySelector('.tool-top').insertBefore(light, card.querySelector('.keyless'));
+        }
+        const failing = tool.upstreams.map((key) => data.upstreams[key])
+          .filter((upstream) => upstream && upstream.status !== 'ok')
+          .map((upstream) => `${upstream.name}: ${upstream.error || (upstream.status === 'degraded' ? `slow (${upstream.latency_ms} ms)` : upstream.status)}`);
+        light.dataset.state = tool.status;
+        light.dataset.label = healthLabels[tool.status] || tool.status;
+        light.title = (failing.length ? failing.join('\n') : 'Upstream reachable') + (data.checked_at ? `\nChecked ${ago(data.checked_at)}` : '');
+      });
+      const parts = [`${data.summary.ok} up`];
+      if (data.summary.degraded) parts.push(`${data.summary.degraded} degraded`);
+      if (data.summary.down) parts.push(`${data.summary.down} down`);
+      if (data.summary.unknown) parts.push(`${data.summary.unknown} unknown`);
+      summary.hidden = false;
+      summary.textContent = `· ${parts.join(' · ')}${data.checked_at ? ` · checked ${ago(data.checked_at)}` : ''}`;
+    }
+    loadHealth();
+    window.setInterval(loadHealth, 5 * 60 * 1000);
 
     const search = document.querySelector('#search');
     const cards = [...document.querySelectorAll('.tool-card')];

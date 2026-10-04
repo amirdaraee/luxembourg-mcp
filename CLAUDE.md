@@ -12,7 +12,7 @@ PYTHONPATH=src python -m unittest tests.test_server.ProtocolTests.test_initializ
 LUXEMBOURG_MCP_LIVE=1 PYTHONPATH=src python -m unittest tests.test_live_tools -v    # opt-in E2E against real upstreams
 
 luxembourg-mcp                                              # stdio transport (default)
-luxembourg-mcp --transport http --port 8000                 # HTTP: /mcp endpoint, / catalog, /health
+luxembourg-mcp --transport http --port 8000                 # HTTP: /mcp endpoint, / catalog, /health, /status
 ```
 
 `LUXEMBOURG_MCP_RATE_LIMIT` sets the HTTP per-IP requests/minute limit (0 disables; IPv6 bucketed by /64). `LUXEMBOURG_MCP_MAX_CONNECTIONS` caps concurrent HTTP connections (default 32).
@@ -26,7 +26,8 @@ luxembourg-mcp --transport http --port 8000                 # HTTP: /mcp endpoin
 Three layers, strictly ordered:
 
 - `src/luxembourg_mcp/http.py` — `HttpClient` wraps urllib; every network failure becomes `UpstreamError`. Enforces a 25 MB response cap and exact-hostname HTTPS allowlisting including on redirects (`_SafeRedirectHandler`): `allowed_hosts` when passed, otherwise the request URL's own host only (so a hardcoded upstream that starts redirecting cross-host fails loudly in the weekly live tests — update the constant rather than widening the policy).
-- `src/luxembourg_mcp/providers.py` — `LuxembourgData`, one method per tool ("fetch → parse → shape"). Upstream base URLs are hardcoded constants. TTL cache via `_cached()` for expensive fetches (STATEC catalog, GTFS zip, day-ahead prices and commune registers: 1 h; air quality and LU-Alert metadata: 10 min; FLEX and Vël'OK: 2 min). `_latest_resource()` picks the newest file in datasets that publish one per day/quarter. `HttpClient` is constructor-injected, which is what lets tests run offline with a fake.
+- `src/luxembourg_mcp/providers.py` — `LuxembourgData`, one method per tool ("fetch → parse → shape"). Upstream base URLs are hardcoded constants. TTL cache via `_cached()` for expensive fetches (STATEC catalog, GTFS zip, ENTSO-E electricity documents, plenary votes, deputies, ADEM figures and commune registers: 1 h; air quality and LU-Alert metadata: 10 min; FLEX and Vël'OK: 2 min). `_latest_resource()` picks the newest file in datasets that publish one per day/quarter. `HttpClient` is constructor-injected, which is what lets tests run offline with a fake.
+- `src/luxembourg_mcp/status.py` — `StatusMonitor` behind `GET /status` (the catalogue's per-card status lights): one cheap `HttpClient.probe()` per upstream in `UPSTREAMS` (reads only 4 KB; dataset-backed tools probe the small data.public.lu API v2 record, not v1), refreshed at most every 10 min, stale-while-revalidate; the first visitor waits at most 5 s and each round has a 30 s deadline, because request threads share the HTTP connection cap with /mcp. One failure = degraded, two in a row = down; a tool shows the worst state of its `TOOL_UPSTREAMS`.
 - `src/luxembourg_mcp/server.py` — `McpServer`: the tool registry (name → `Tool` dataclass with JSON schema), JSON-RPC dispatch (`dispatch()` → HTTP status + body; `handle()` wraps it for stdio/tests), schema validation, and both transports (stdio loop; stateless `ThreadingHTTPServer` with body-size cap, `RateLimiter`, and localhost-Origin check).
 
 Dual-era protocol: a request whose `params._meta` carries `io.modelcontextprotocol/protocolVersion` is served statelessly per MCP 2026-07-28 (`_dispatch_modern`: `server/discover`, `tools/list`/`tools/call` with `resultType`, `ttlMs`/`cacheScope`, `_meta` serverInfo; over HTTP the `MCP-Protocol-Version`/`Mcp-Method`/`Mcp-Name` headers must match the body or it's `400` + `-32020`, unsupported versions `400` + `-32022`, unknown methods `404`). Anything else takes the legacy `initialize`-handshake path (`_dispatch_legacy`, 2025-11-25 and earlier), which must stay byte-compatible — `initialize` never negotiates a modern version. Real clients in `auto` mode probe `server/discover` first and fall back to `initialize` on any non-modern error, so a broken modern path silently degrades rather than failing; tests/test_modern_protocol.py covers both eras.
@@ -35,15 +36,16 @@ Error contract in `tools/call`: `TypeError`/`ValueError` → "Invalid arguments"
 
 Every tool result must include a `"source"` key with the upstream URL (several also include `"dataset"`); tests and the README rely on this convention.
 
-## Adding or changing a tool touches five places
+## Adding or changing a tool touches six places
 
 The contract tests enforce set-equality between registered tools and test cases, and the catalog test asserts the exact tool count, so a new tool requires all of:
 
 1. Provider method on `LuxembourgData` (providers.py)
 2. `Tool(...)` registration with input schema (server.py `McpServer.__init__`)
-3. Entry in `TOOL_CASES` in **both** `tests/test_all_tools.py` and `tests/test_live_tools.py`
+3. Entry in `TOOL_CASES` in `tests/test_all_tools.py` **and** a `test_<tool_name>` method in `tests/test_live_tools.py` (a guard test enforces both)
 4. A `tool-card` in `src/luxembourg_mcp/static/index.html` (test asserts card count and the "N official systems" figure)
 5. The tool table in README.md and the tool count mentioned in server.py `instructions`
+6. Its upstreams in `TOOL_UPSTREAMS` (status.py), adding any new probe to `UPSTREAMS`; tests/test_status.py enforces both, and that every `*_SLUG`/`*_DATASET` constant is probed
 
 ## Security invariants (tested in tests/test_security.py — do not regress)
 

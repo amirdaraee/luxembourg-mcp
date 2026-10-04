@@ -8,10 +8,10 @@ Keyless Model Context Protocol access to Luxembourg public data.
 
 **Hosted endpoint — no install needed:** point any MCP client at `https://mcp.luxembourg-mcp.com/mcp` (streamable HTTP). Or run it yourself with `uvx luxembourg-mcp`. Website: [luxembourg-mcp.com](https://luxembourg-mcp.com)
 
-Luxembourg MCP turns fragmented public APIs and open datasets into 38 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
+Luxembourg MCP turns fragmented public APIs and open datasets into 44 consistent tools that AI agents can call directly. It covers laws, official statistics, mobility, environmental measurements, parliament, accessibility, addresses, geospatial features, and the national open-data catalogue.
 
-- 38 MCP tools
-- 26 public data systems
+- 44 MCP tools
+- 28 public data systems
 - No API keys or accounts
 - No scraping
 - Source URL returned with every result
@@ -67,6 +67,12 @@ Luxembourg MCP applies that idea to the Grand Duchy. It is an independent implem
 | `get_carsharing` | CFL Mobility | Available FLEX carsharing vehicles |
 | `get_bike_sharing` | Vël'OK | Live bike-sharing availability in the south |
 | `search_tenders` | Portail des marchés publics | Open public procurement notices |
+| `get_plenary_votes` | Chamber of Deputies | Plenary votes with tallies per party and per deputy |
+| `get_deputies` | Chamber of Deputies | Current deputies, party, constituency and email |
+| `lookup_luxembourgish` | Lëtzebuerger Online Dictionnaire | Translations, pronunciation and examples |
+| `get_traffic_events` | CITA | Live roadworks, closures and incidents |
+| `get_electricity_grid` | Open Data Lëtzebuerg | Daily load, generation mix and cross-border flows |
+| `get_unemployment` | ADEM | Monthly jobseekers and vacancies, national or by commune |
 
 ## Quick start
 
@@ -86,6 +92,9 @@ Once running:
 | Tool catalogue | `http://127.0.0.1:8000/` |
 | MCP endpoint | `http://127.0.0.1:8000/mcp` |
 | Health check | `http://127.0.0.1:8000/health` |
+| Upstream status | `http://127.0.0.1:8000/status` |
+
+`/status` reports whether each tool's official upstreams are reachable; the catalogue shows it as a light on every tool card. Each upstream gets one lightweight check (only the first few kilobytes are read) at most every 10 minutes, however many people load the page. One failed check marks an upstream *degraded*, two in a row *down*.
 
 ### Stdio client
 
@@ -117,6 +126,9 @@ After connecting an MCP client, an agent can answer questions such as:
 - Find legislation concerning pensions.
 - Which STATEC datasets contain population figures?
 - What are the latest traffic measurements on the A6?
+- Are there roadworks or lane closures on the A4 right now?
+- How did each party vote on the latest tramway bill?
+- What does the Luxembourgish word "Schiertech" mean?
 - Find the official coordinates for an address in Luxembourg City.
 - Which bus or tram stops match Hamilius?
 

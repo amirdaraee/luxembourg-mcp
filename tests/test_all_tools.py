@@ -1,4 +1,6 @@
+import re
 import unittest
+from pathlib import Path
 
 from luxembourg_mcp.server import McpServer
 
@@ -42,6 +44,12 @@ TOOL_CASES = {
     "get_carsharing": {"query": "Mamer", "fuel_type": "electric"},
     "get_bike_sharing": {"query": "Esch", "available_only": True},
     "search_tenders": {"query": "construction", "limit": 3},
+    "get_plenary_votes": {"query": "PL 8727", "deputy": "Tanson", "limit": 2},
+    "get_deputies": {"query": "Sud"},
+    "lookup_luxembourgish": {"word": "Haus", "language": "lb", "limit": 1},
+    "get_traffic_events": {"road": "A4"},
+    "get_electricity_grid": {"include_series": False},
+    "get_unemployment": {"months": 3, "commune": "Esch-sur-Alzette"},
 }
 
 
@@ -64,7 +72,11 @@ class EveryToolContractTests(unittest.TestCase):
 
     def test_every_registered_tool_has_a_contract_case(self):
         self.assertEqual(set(self.server.tools), set(TOOL_CASES))
-        self.assertEqual(len(TOOL_CASES), 38)
+        self.assertEqual(len(TOOL_CASES), 44)
+
+    def test_every_registered_tool_has_a_live_test(self):
+        live = (Path(__file__).parent / "test_live_tools.py").read_text(encoding="utf-8")
+        self.assertEqual(set(re.findall(r"def test_(\w+)\(self\)", live)), set(self.server.tools))
 
     def test_every_tool_routes_arguments_and_returns_structured_content(self):
         for request_id, (name, arguments) in enumerate(TOOL_CASES.items(), start=1):

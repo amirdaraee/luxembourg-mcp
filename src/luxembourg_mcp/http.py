@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import ipaddress
+from http.client import HTTPException
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -59,7 +60,7 @@ class HttpClient:
         validate_external_url(url, allowed_hosts)
         request_headers = {
             "Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
-            "User-Agent": "luxembourg-mcp/0.7",
+            "User-Agent": "luxembourg-mcp/0.8",
         }
         request_headers.update(headers or {})
         request = Request(
@@ -84,6 +85,21 @@ class HttpClient:
             raise UpstreamError(f"Upstream returned HTTP {exc.code} for {url}") from exc
         except (URLError, TimeoutError) as exc:
             raise UpstreamError(f"Could not reach upstream {url}: {exc}") from exc
+
+    def probe(self, url: str, headers: dict[str, str] | None = None, *, timeout: float = 10, read_bytes: int = 4096) -> int:
+        """Reachability check for a hardcoded URL: the HTTP status, reading only the start of the body."""
+        allowed_hosts = frozenset({(urlsplit(url).hostname or "").lower()})
+        validate_external_url(url, allowed_hosts)
+        request = Request(url, headers={"Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
+                                        "User-Agent": "luxembourg-mcp/0.8 (status check)", **(headers or {})})
+        try:
+            with build_opener(_SafeRedirectHandler(allowed_hosts)).open(request, timeout=timeout) as response:
+                response.read(read_bytes)
+                return response.status
+        except HTTPError as exc:
+            raise UpstreamError(f"HTTP {exc.code}") from exc
+        except (URLError, TimeoutError, OSError, HTTPException) as exc:
+            raise UpstreamError(f"unreachable: {getattr(exc, 'reason', exc)}") from exc
 
     def get_json_value(
         self,

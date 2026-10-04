@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 from .http import UpstreamError
 from .providers import LuxembourgData
+from .status import StatusMonitor
 
 # Dual-era server: "modern" revisions are stateless (per-request `_meta`, no handshake);
 # "legacy" revisions use the `initialize` handshake. Both are served on one endpoint.
@@ -26,8 +27,8 @@ MODERN_PROTOCOL_VERSIONS = ("2026-07-28",)
 LEGACY_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SUPPORTED_PROTOCOL_VERSIONS = MODERN_PROTOCOL_VERSIONS + LEGACY_PROTOCOL_VERSIONS
 PROTOCOL_VERSION = LEGACY_PROTOCOL_VERSIONS[0]  # offered to `initialize` requests for unknown versions
-SERVER_INFO = {"name": "luxembourg-mcp", "version": "0.7.0"}
-INSTRUCTIONS = "Keyless access to official Luxembourg public data through 38 tools. Results include upstream source URLs."
+SERVER_INFO = {"name": "luxembourg-mcp", "version": "0.8.0"}
+INSTRUCTIONS = "Keyless access to official Luxembourg public data through 44 tools. Results include upstream source URLs."
 TOOLS_TTL_MS = 60 * 60 * 1000  # the tool list only changes between releases
 HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
@@ -245,6 +246,9 @@ class RateLimiter:
 class McpServer:
     def __init__(self, data: LuxembourgData | None = None):
         source = data or LuxembourgData()
+        self._status_http = getattr(source, "http", None)
+        self._status_monitor: StatusMonitor | None = None
+        self._status_lock = threading.Lock()
         self.tools = {
             tool.name: tool for tool in [
                 Tool("search_datasets", "Search Luxembourg's official data.public.lu catalog.", _object_schema({"query": {"type": "string"}, "page": {"type": "integer", "minimum": 1, "default": 1}, "page_size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["query"]), source.search_datasets),
@@ -285,8 +289,21 @@ class McpServer:
                 Tool("get_carsharing", "Find currently available CFL FLEX carsharing vehicles by station, town or fuel type.", _object_schema({"query": {"type": "string", "description": "Optional station, town, address or model filter"}, "fuel_type": {"type": "string", "description": "Optional fuel filter such as electric or diesel"}}), source.get_carsharing),
                 Tool("get_bike_sharing", "Get live Vel'OK bike-sharing availability at stations in southern Luxembourg.", _object_schema({"query": {"type": "string", "description": "Optional station, locality or commune filter"}, "available_only": {"type": "boolean", "default": False}}), source.get_bike_sharing),
                 Tool("search_tenders", "Search Luxembourg public procurement notices with deadlines, buyers and CPV codes.", _object_schema({"query": {"type": "string", "description": "Optional full-text filter"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}, "open_only": {"type": "boolean", "default": True}}), source.search_tenders),
+                Tool("get_plenary_votes", "Get Chamber of Deputies plenary votes, newest first, with yes/no/abstain tallies per party and optionally how one deputy voted.", _object_schema({"query": {"type": "string", "description": "Optional subject filter such as a bill number (PL 8727) or keyword"}, "deputy": {"type": "string", "description": "Optional deputy-name filter; adds that deputy's vote"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}), source.get_plenary_votes),
+                Tool("get_deputies", "List the current members of the Chamber of Deputies with party, constituency, start of mandate and official email.", _object_schema({"query": {"type": "string", "description": "Optional name, party or constituency filter"}}), source.get_deputies),
+                Tool("lookup_luxembourgish", "Look up a word in the official Luxembourgish dictionary (LOD): translations into German, French, English and Portuguese, pronunciation, forms and examples.", _object_schema({"word": {"type": "string"}, "language": {"type": "string", "enum": ["lb", "de", "fr", "en", "pt", "nl"], "default": "lb", "description": "Language of the word being looked up"}, "limit": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2}}, ["word"]), source.lookup_luxembourgish),
+                Tool("get_traffic_events", "Get live roadworks, lane closures, incidents and equipment faults on Luxembourg motorways from CITA.", _object_schema({"road": {"type": "string", "description": "Optional road filter such as A4 or B40"}}), source.get_traffic_events),
+                Tool("get_electricity_grid", "Get Luxembourg's latest daily electricity load, generation by production type and cross-border flows (ENTSO-E actuals).", _object_schema({"include_series": {"type": "boolean", "default": False, "description": "Also return the 15-minute load and generation series"}}), source.get_electricity_grid),
+                Tool("get_unemployment", "Get monthly ADEM figures: registered resident jobseekers by sex and job vacancies, nationally or for one commune.", _object_schema({"months": {"type": "integer", "minimum": 1, "maximum": 120, "default": 12}, "commune": {"type": "string", "description": "Optional commune name for local jobseeker counts"}}), source.get_unemployment),
             ]
         }
+
+    def status(self) -> dict:
+        """Upstream health for the catalogue's status lights (GET /status)."""
+        with self._status_lock:
+            if self._status_monitor is None:
+                self._status_monitor = StatusMonitor(self._status_http)
+        return self._status_monitor.snapshot()
 
     @staticmethod
     def _result(request_id: Any, result: dict) -> dict:
@@ -480,6 +497,13 @@ class McpServer:
                     self._send_html(200, catalog_html())
                 elif path == "/health":
                     self._send(200, {"status": "ok", "server": "luxembourg-mcp"})
+                elif path == "/status":
+                    # Public, read-only and cached server-side, so any page (luxembourg-mcp.com) may read it.
+                    headers = {"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60"}
+                    try:
+                        self._send(200, mcp.status(), headers)
+                    except Exception:
+                        self._send(503, {"error": "Status is temporarily unavailable"}, headers)
                 else:
                     self._send(405, {"error": "This stateless server does not offer an SSE stream"}, {"Allow": "POST"})
 
@@ -529,8 +553,8 @@ class McpServer:
 
             def do_HEAD(self) -> None:
                 path = self.path.split("?", 1)[0]
-                self.send_response(200 if path in ("/", "/health") else 405)
-                if path not in ("/", "/health"):
+                self.send_response(200 if path in ("/", "/health", "/status") else 405)
+                if path not in ("/", "/health", "/status"):
                     self.send_header("Allow", "GET, POST, OPTIONS")
                 self.send_header("Content-Length", "0")
                 self.end_headers()

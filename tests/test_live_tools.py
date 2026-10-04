@@ -174,6 +174,40 @@ class EveryToolLiveTests(unittest.TestCase):
         self.assertGreaterEqual(data["count"], 1)
         self.assertTrue(data["tenders"][0]["title"])
 
+    def test_get_plenary_votes(self):
+        data = self.call("get_plenary_votes", {"limit": 2})
+        self.assertEqual(data["count"], 2)
+        self.assertGreaterEqual(sum(data["votes"][0]["tally"].values()), 50)
+        self.assertGreaterEqual(len(data["votes"][0]["by_party"]), 3)
+
+    def test_get_deputies(self):
+        data = self.call("get_deputies")
+        self.assertEqual(data["count"], 60)
+        self.assertEqual(sum(data["seats_by_party"].values()), 60)
+        self.assertNotIn("address", data["deputies"][0])
+
+    def test_lookup_luxembourgish(self):
+        data = self.call("lookup_luxembourgish", {"word": "Haus", "limit": 1})
+        self.assertEqual(data["entries"][0]["lemma"], "Haus")
+        self.assertIn("house", data["entries"][0]["meanings"][0]["translations"]["en"])
+
+    def test_get_traffic_events(self):
+        data = self.call("get_traffic_events")
+        self.assertIsNotNone(data["published"])
+        self.assertTrue(all(event["kind"] for event in data["events"]))
+
+    def test_get_electricity_grid(self):
+        data = self.call("get_electricity_grid")
+        self.assertGreater(data["load"]["average_mw"], 100)
+        self.assertGreaterEqual(len(data["generation"]), 3)
+        self.assertGreaterEqual(len(data["cross_border_flows"]), 2)
+
+    def test_get_unemployment(self):
+        data = self.call("get_unemployment", {"months": 2})
+        self.assertEqual(data["count"], 2)
+        self.assertGreater(data["months"][0]["resident_jobseekers"], 5000)
+        self.assertIsNotNone(data["months"][0]["open_vacancies"])
+
 
 if __name__ == "__main__":
     unittest.main()

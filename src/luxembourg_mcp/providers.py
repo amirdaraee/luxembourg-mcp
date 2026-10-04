@@ -63,6 +63,29 @@ METEOLUX_FORECAST = "https://metapi.ana.lu/api/v1/metapp/weather"
 PHARMACY_ON_DUTY = "https://pharmacie.lu/feed-garde-csv"
 VELOK_STATIONS = "https://www.velok.lu/api-proxy.php"
 PMP_TENDERS = "https://pmp.b2g.etat.lu/api/v2/consultations"
+VOTES_SLUG = "liste-des-votes-en-seances-plenieres"
+DEPUTIES_SLUG = "liste-des-deputes-actifs"
+# Lëtzebuerger Online Dictionnaire: the OpenAPI doc omits query parameters; search needs query and lang.
+LOD_API = "https://lod.lu/api"
+LOD_LANGUAGES = ("lb", "de", "fr", "en", "pt", "nl")
+CITA_EVENTS = f"{CITA_TRAFFIC}/situationrecord36"
+GENERATION_SLUG = "electricity-in-luxembourg-actual-generation-per-production-type"
+LOAD_SLUG = "electricity-in-luxembourg-actual-total-load"
+FLOWS_SLUG = "electricity-in-luxembourg-cross-border-physical-flows"
+ADEM_SLUG = "chiffres-cles-de-ladem"
+# ENTSO-E production types (psrType) and bidding zones that appear in the Luxembourg feeds.
+ENTSOE_PRODUCTION_TYPES = {
+    "B01": "Biomass", "B02": "Fossil brown coal/lignite", "B04": "Fossil gas", "B05": "Fossil hard coal",
+    "B06": "Fossil oil", "B09": "Geothermal", "B10": "Hydro pumped storage", "B11": "Hydro run-of-river",
+    "B12": "Hydro water reservoir", "B14": "Nuclear", "B15": "Other renewable", "B16": "Solar",
+    "B17": "Waste", "B18": "Wind offshore", "B19": "Wind onshore", "B20": "Other",
+}
+ENTSOE_ZONES = {
+    "10YLU-CEGEDEL-NQ": "Luxembourg", "10Y1001A1001A83F": "Germany", "10Y1001A1001A82H": "Germany",
+    "10YBE----------2": "Belgium", "10YFR-RTE------C": "France",
+}
+MAX_FLOW_FILES = 8
+VOTE_CHOICES = {"oui": "yes", "non": "no", "abstention": "abstain", "pas participe": "did_not_vote"}
 # The Chargy dataset's resource URL lives on my.chargy.lu and carries a key that
 # Chargy itself publishes openly in the national catalog, so no user key is needed.
 CHARGY_RESOURCE_HOSTS = DATA_PUBLIC_RESOURCE_HOSTS | {"my.chargy.lu"}
@@ -1116,20 +1139,10 @@ class LuxembourgData:
                 (item for item in series if (item.findtext("{*}classificationSequence_AttributeInstanceComponent.position") or "") == "1"),
                 series[0],
             )
-            period = chosen.find("{*}Period")
-            start = _entsoe_time(period.find("{*}timeInterval").findtext("{*}start"))
-            minutes = 15 if (period.findtext("{*}resolution") or "") == "PT15M" else 60
-            # curveType A03: a point holds until the next one, so gaps repeat the previous price.
-            by_position = {int(point.findtext("{*}position")): _number(point.findtext("{*}price.amount")) for point in period.findall("{*}Point")}
-            if not by_position or start is None:
+            minutes, points = _entsoe_points(chosen, "price.amount")
+            if not points:
                 raise UpstreamError("Day-ahead price document had no usable points")
-            prices, last = [], None
-            for position in range(1, max(by_position) + 1):
-                last = by_position.get(position, last)
-                if last is None:
-                    continue
-                prices.append({"start": (start + timedelta(minutes=minutes * (position - 1))).isoformat().replace("+00:00", "Z"),
-                               "eur_per_mwh": last})
+            prices = [{"start": start, "eur_per_mwh": value} for start, value in points]
             return {"currency": chosen.findtext("{*}currency_Unit.name"), "unit": chosen.findtext("{*}price_Measure_Unit.name"),
                     "resolution_minutes": minutes, "prices": prices}
 
@@ -1237,6 +1250,328 @@ class LuxembourgData:
         return {"total": data.get("hydra:totalItems", len(notices)), "count": len(notices),
                 "open_only": open_only, "tenders": notices, "source": url}
 
+    def _plenary_votes(self, url: str) -> list[dict]:
+        def load() -> list[dict]:
+            payload, _ = self.http.get_bytes(url, {"Accept": "text/csv"}, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            rows = self._decode_csv(payload, delimiter=",")
+            if rows and "vote_name" not in rows[0]:
+                raise UpstreamError("Plenary vote CSV had an unexpected layout")
+            # ~90k rows (one per deputy per vote): keep one compact record per vote, not the rows.
+            votes: dict[tuple[str, str], dict] = {}
+            for row in rows:
+                key = ((row.get("meeting_date") or "").strip(), (row.get("vote_name") or "").strip())
+                if not key[1]:
+                    continue
+                vote = votes.get(key)
+                if vote is None:
+                    vote = votes[key] = {"date": key[0], "subject": key[1], "type": (row.get("vote_type") or "").strip() or None,
+                                         "subject_folded": _fold(key[1]), "ballots": []}
+                name = " ".join(part for part in ((row.get("firstname") or "").strip(), (row.get("lastname") or "").strip()) if part)
+                raw_choice = (row.get("vote_result") or "").strip()
+                # Names are folded once here, not on every search across ~90k ballots.
+                vote["ballots"].append((name, (row.get("rattachement_abrv") or "").strip() or None,
+                                        VOTE_CHOICES.get(_fold(raw_choice), raw_choice.lower() or None), _fold(name)))
+            return sorted(votes.values(), key=lambda item: item["date"], reverse=True)
+
+        return self._cached(f"votes:{url}", 3600, load)
+
+    def get_plenary_votes(self, query: str | None = None, deputy: str | None = None, limit: int = 10) -> dict:
+        limit = min(max(limit, 1), 50)
+        dataset, resource = self._latest_resource(VOTES_SLUG, "csv", ttl=3600)
+        url = resource["url"]
+        needle = _fold(query) if query and query.strip() else None
+        person = _fold(deputy) if deputy and deputy.strip() else None
+        matches = []
+        for vote in self._plenary_votes(url):
+            if needle and needle not in vote["subject_folded"]:
+                continue
+            mine = [ballot for ballot in vote["ballots"] if person and person in ballot[3]]
+            if person and not mine:
+                continue
+            matches.append((vote, mine))
+        if person and not matches:
+            raise ValueError(f"no plenary vote matched deputy: {deputy}")
+        shaped = []
+        for vote, mine in matches[:limit]:
+            tally = {"yes": 0, "no": 0, "abstain": 0, "did_not_vote": 0}
+            by_party: dict[str, dict[str, int]] = {}
+            for _, party, choice, _ in vote["ballots"]:
+                tally[choice] = tally.get(choice, 0) + 1
+                party_tally = by_party.setdefault(party or "unaffiliated", {})
+                party_tally[choice] = party_tally.get(choice, 0) + 1
+            entry = {"date": vote["date"], "subject": vote["subject"], "type": vote["type"], "tally": tally, "by_party": by_party}
+            if person:
+                entry["deputy_votes"] = [{"deputy": name, "party": party, "vote": choice} for name, party, choice, _ in mine]
+            shaped.append(entry)
+        return {"count": len(shaped), "total_matches": len(matches), "votes": shaped,
+                "note": "type distinguishes ordinary votes from the first and second constitutional votes; "
+                        "tallies count deputies, not the adoption rule that applies",
+                "source": url, "dataset": dataset.get("page")}
+
+    def get_deputies(self, query: str | None = None) -> dict:
+        dataset, resource = self._latest_resource(DEPUTIES_SLUG, "csv", ttl=3600)
+        url = resource["url"]
+        rows = self._cached(f"deputies:{url}", 3600, lambda: self._decode_csv(
+            self.http.get_bytes(url, {"Accept": "text/csv"}, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)[0], delimiter=","))
+        needle = _fold(query) if query and query.strip() else None
+        deputies = []
+        seats: dict[str, int] = {}
+        for row in rows:
+            first, last = (row.get("pph_prenom") or "").strip(), (row.get("pph_nom") or "").strip()
+            if not (first or last):
+                continue
+            party = (row.get("rattachement_abrv") or "").strip() or None
+            seats[party or "unaffiliated"] = seats.get(party or "unaffiliated", 0) + 1
+            constituency = re.sub(r"^Circonscription\s+", "", (row.get("derniere_circonscription") or "").strip()) or None
+            # The source also carries home addresses, private phone numbers and birth dates: never pass those on.
+            email = (row.get("email") or "").strip()
+            deputy = {
+                "name": f"{first} {last}".strip(),
+                "title": (row.get("per_titre") or "").strip() or None,
+                "party": party,
+                "affiliation": (row.get("rattachement_type") or "").strip() or None,
+                "constituency": constituency,
+                "since": (row.get("date_debut_depute") or "").strip()[:10] or None,
+                "email": email if re.fullmatch(r"[^@\s]+@[^@\s]+\.[A-Za-z]+", email) else None,
+            }
+            if needle and needle not in _fold(" ".join(str(deputy[key] or "") for key in ("name", "party", "constituency"))):
+                continue
+            deputies.append((_fold(f"{last} {first}"), deputy))
+        if needle and not deputies:
+            raise ValueError(f"no current deputy matched: {query}")
+        deputies.sort(key=lambda item: item[0])
+        return {"count": len(deputies), "seats_by_party": dict(sorted(seats.items(), key=lambda item: -item[1])),
+                "deputies": [deputy for _, deputy in deputies], "source": url, "dataset": dataset.get("page")}
+
+    def lookup_luxembourgish(self, word: str, language: str = "lb", limit: int = 2) -> dict:
+        if not word.strip():
+            raise ValueError("word must not be empty")
+        language = language.lower()
+        if language not in LOD_LANGUAGES:
+            raise ValueError(f"language must be one of {', '.join(LOD_LANGUAGES)}")
+        # Each entry costs one more lod.lu request, so the cap keeps a call at six requests at most.
+        limit = min(max(limit, 1), 5)
+        # The path locale picks the language of the glosses in the hit list; English reads best for agents.
+        locale = "en" if language == "lb" else language
+        url = f"{LOD_API}/{locale}/search?{urlencode({'query': word.strip(), 'lang': language})}"
+        data = self.http.get_json(url)
+        hits = [item for item in data.get("results") or [] if isinstance(item, dict)]
+        entries = []
+        for hit in hits[:limit]:
+            lod_id = str(hit.get("article_id") or hit.get("id") or "")
+            # Entry ids come from upstream data and land in a URL path, so only plain ids are followed.
+            if not re.fullmatch(r"[A-Z0-9]{1,40}", lod_id):
+                continue
+            entry = (self.http.get_json(f"{LOD_API}/en/entry/{lod_id}").get("entry") or {})
+            meanings, forms = [], []
+            for micro in entry.get("microStructures") or []:
+                for form in ((micro.get("inflection") or {}).get("forms") or []):
+                    if isinstance(form, dict) and form.get("content") and form["content"] not in forms:
+                        forms.append(form["content"])
+                for unit in micro.get("grammaticalUnits") or []:
+                    for meaning in unit.get("meanings") or []:
+                        for form in ((meaning.get("inflection") or {}).get("forms") or []):
+                            if isinstance(form, dict) and form.get("content") and form["content"] not in forms:
+                                forms.append(form["content"])
+                        translations = {code: _lod_translation(value) for code, value in (meaning.get("targetLanguages") or {}).items()}
+                        examples = [_lod_text(example.get("parts")) for example in (meaning.get("examples") or [])[:2] if isinstance(example, dict)]
+                        meanings.append({"number": meaning.get("number"),
+                                         "translations": {code: text for code, text in translations.items() if text},
+                                         "examples": [text for text in examples if text]})
+            entries.append({
+                "id": lod_id,
+                "lemma": entry.get("lemma") or hit.get("word_lb"),
+                "part_of_speech": entry.get("partOfSpeechLabel") or hit.get("pos"),
+                "ipa": entry.get("ipa"),
+                "forms": forms,
+                "meanings": meanings,
+                "url": f"https://lod.lu/artikel/{lod_id}",
+            })
+        return {"word": word.strip(), "language": language, "total_hits": len(hits), "count": len(entries),
+                "entries": entries, "source": url}
+
+    def get_traffic_events(self, road: str | None = None) -> dict:
+        if road is not None and not re.fullmatch(r"[A-Za-z]{1,3}\d{1,4}", road.strip()):
+            raise ValueError("road must look like A4 or N7")
+        payload, _ = self.http.get_bytes(CITA_EVENTS, {"Accept": "application/xml"})
+        try:
+            root = _parse_xml(payload)
+        except ElementTree.ParseError as exc:
+            raise UpstreamError("CITA returned invalid DATEX II XML") from exc
+        xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+        events = []
+        for record in root.iter():
+            if not record.tag.endswith("}situationRecord"):
+                continue
+            # Records name their kind in xsi:type and the detail in a *Type child (roadMaintenanceType, ...).
+            detail = next((child.text for child in record
+                           if child.tag.endswith("Type") and not child.tag.endswith("}commentType") and child.text), None)
+            road_name = record.findtext(".//{*}roadName")
+            if road and _fold(road_name or "") != _fold(road.strip()):
+                continue
+            events.append({
+                "id": record.get("id"),
+                "kind": (record.get(xsi_type) or "").split(":")[-1] or None,
+                "detail": detail,
+                "road": road_name,
+                "direction": record.findtext(".//{*}roadDestination"),
+                "location": record.findtext(".//{*}locationDescription//{*}value"),
+                "comment": record.findtext(".//{*}generalPublicComment//{*}value"),
+                "start": record.findtext(".//{*}overallStartTime"),
+                "end": record.findtext(".//{*}overallEndTime"),
+                "lanes_restricted": _number(record.findtext(".//{*}numberOfLanesRestricted")),
+                "lanes_open": _number(record.findtext(".//{*}numberOfOperationalLanes")),
+                "length_m": _number(record.findtext(".//{*}lengthAffected")),
+                "latitude": _number(record.findtext(".//{*}pointCoordinates/{*}latitude")),
+                "longitude": _number(record.findtext(".//{*}pointCoordinates/{*}longitude")),
+                "updated": record.findtext("{*}situationRecordVersionTime"),
+            })
+        return {"published": root.findtext("{*}publicationTime"), "road": road.strip().upper() if road else None,
+                "count": len(events), "events": events, "source": CITA_EVENTS}
+
+    def _entsoe_document(self, url: str) -> ElementTree.Element:
+        def load() -> ElementTree.Element:
+            payload, _ = self.http.get_bytes(url, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)
+            try:
+                return _parse_xml(payload)
+            except ElementTree.ParseError as exc:
+                raise UpstreamError("ENTSO-E document was not valid XML") from exc
+        return self._cached(f"entsoe:{url}", 3600, load)
+
+    def get_electricity_grid(self, include_series: bool = False) -> dict:
+        def summary(minutes: int, points: list[tuple[str, int | float]]) -> dict:
+            values = [value for _, value in points]
+            peak = max(points, key=lambda item: item[1])
+            return {"average_mw": round(sum(values) / len(values), 1), "peak_mw": peak[1], "peak_at": peak[0],
+                    "min_mw": min(values), "energy_mwh": round(sum(values) * minutes / 60, 1),
+                    "from": points[0][0], "until": points[-1][0]}
+
+        load_dataset, load_resource = self._latest_resource(LOAD_SLUG, "xml", ttl=3600)
+        load_series = self._entsoe_document(load_resource["url"]).find("{*}TimeSeries")
+        load_minutes, load_points = _entsoe_points(load_series, "quantity") if load_series is not None else (60, [])
+        if not load_points:
+            raise UpstreamError("Total-load document had no usable points")
+
+        _, generation_resource = self._latest_resource(GENERATION_SLUG, "xml", ttl=3600)
+        generation, generation_series = [], {}
+        for series in self._entsoe_document(generation_resource["url"]).findall("{*}TimeSeries"):
+            code = (series.findtext(".//{*}psrType") or "").strip()
+            minutes, points = _entsoe_points(series, "quantity")
+            if not points:
+                continue
+            name = ENTSOE_PRODUCTION_TYPES.get(code, code or "unknown")
+            generation.append({"type": name, "code": code or None, **summary(minutes, points)})
+            generation_series[name] = [{"start": start, "mw": value} for start, value in points]
+        generation.sort(key=lambda item: -item["energy_mwh"])
+
+        flows_dataset, newest_flow = self._latest_resource(FLOWS_SLUG, "xml", ttl=3600)
+        day = re.search(r"-(\d{8})\.xml$", newest_flow["url"])
+        flow_resources = [item for item in flows_dataset.get("resources", [])
+                          if item.get("format") == "xml" and item.get("url") and day and item["url"].endswith(f"-{day.group(1)}.xml")] or [newest_flow]
+        # One file per border and direction (4 today); the cap bounds downloads if the metadata ever lists more.
+        flow_resources = flow_resources[:MAX_FLOW_FILES]
+        flows, net_import = [], 0.0
+        for resource in flow_resources:
+            series = self._entsoe_document(resource["url"]).find("{*}TimeSeries")
+            if series is None:
+                continue
+            minutes, points = _entsoe_points(series, "quantity")
+            if not points:
+                continue
+            origin = ENTSOE_ZONES.get((series.findtext("{*}out_Domain.mRID") or "").strip(), series.findtext("{*}out_Domain.mRID"))
+            target = ENTSOE_ZONES.get((series.findtext("{*}in_Domain.mRID") or "").strip(), series.findtext("{*}in_Domain.mRID"))
+            energy = round(sum(value for _, value in points) * minutes / 60, 1)
+            net_import += energy if target == "Luxembourg" else -energy if origin == "Luxembourg" else 0
+            flows.append({"from": origin, "to": target, "energy_mwh": energy,
+                          "average_mw": round(sum(value for _, value in points) / len(points), 1)})
+        flows.sort(key=lambda item: -item["energy_mwh"])
+
+        result = {
+            "day": load_resource.get("title"),
+            "load": summary(load_minutes, load_points),
+            "generation": generation,
+            "generation_mwh": round(sum(item["energy_mwh"] for item in generation), 1),
+            "cross_border_flows": flows,
+            "net_import_mwh": round(net_import, 1),
+            "note": "ENTSO-E actuals for the latest published day (UTC); sections can cover slightly different hours, see from/until",
+            "source": load_resource["url"],
+            "dataset": load_dataset.get("page"),
+        }
+        if include_series:
+            result["series"] = {"load": [{"start": start, "mw": value} for start, value in load_points],
+                                "generation": generation_series}
+        return result
+
+    def _adem_rows(self, filename: str) -> tuple[dict, list[dict[str, str]]]:
+        dataset = self._cached(f"dataset:{ADEM_SLUG}", 3600, lambda: self.get_dataset(ADEM_SLUG))
+        # Picked by file name: the dataset also carries 250 MB microdata files that must never be fetched.
+        resource = next((item for item in dataset.get("resources", [])
+                         if (item.get("url") or "").rsplit("/", 1)[-1] == filename), None)
+        if resource is None:
+            raise UpstreamError(f"ADEM dataset has no {filename} resource")
+        url = resource["url"]
+        rows = self._cached(f"adem:{url}", 3600, lambda: self._decode_csv(
+            self.http.get_bytes(url, {"Accept": "text/csv"}, allowed_hosts=DATA_PUBLIC_RESOURCE_HOSTS)[0], delimiter=","))
+        return {**dataset, "resource_url": url}, rows
+
+    def get_unemployment(self, months: int = 12, commune: str | None = None) -> dict:
+        months = min(max(months, 1), 120)
+        sex_keys = {"F": "women", "Femmes": "women", "M": "men", "Hommes": "men"}
+        if commune is not None:
+            if not commune.strip():
+                raise ValueError("commune must not be empty")
+            dataset, rows = self._adem_rows("de-dispo-commune.csv")
+            communes = sorted({(row.get("Commune") or "").strip() for row in rows if row.get("Commune")})
+            needle = _fold(commune)
+            canonical = next((name for name in communes if _fold(name) == needle), None)
+            if canonical is None:
+                candidates = [name for name in communes if needle in _fold(name)]
+                if len(candidates) != 1:
+                    hint = f"matches: {', '.join(candidates)}" if candidates else f"valid names: {', '.join(communes)}"
+                    raise ValueError(f"commune is {'ambiguous' if candidates else 'unknown'}; {hint}")
+                canonical = candidates[0]
+            per_month: dict[str, dict] = {}
+            for row in rows:
+                month = _adem_month(row.get("Date"))
+                if month is None or (row.get("Commune") or "").strip() != canonical:
+                    continue
+                entry = per_month.setdefault(month, {"month": month, "resident_jobseekers": 0, "women": 0, "men": 0})
+                count = int(_number(row.get("Personnes")) or 0)
+                entry["resident_jobseekers"] += count
+                if (sex := sex_keys.get((row.get("Sexe") or "").strip())):
+                    entry[sex] += count
+            series = sorted(per_month.values(), key=lambda item: item["month"], reverse=True)[:months]
+            return {"commune": canonical, "count": len(series), "months": series,
+                    "note": "resident jobseekers available for work and registered at ADEM, at month end",
+                    "source": dataset["resource_url"], "dataset": dataset.get("page")}
+
+        dataset, people = self._adem_rows("de-dispo-age.csv")
+        _, offers = self._adem_rows("offres-series.csv")
+        per_month = {}
+        for row in people:
+            month = _adem_month(row.get("Date"))
+            if month is None:
+                continue
+            entry = per_month.setdefault(month, {"month": month, "resident_jobseekers": 0, "women": 0, "men": 0,
+                                                 "new_vacancies": None, "open_vacancies": None})
+            count = int(_number(row.get("Personnes")) or 0)
+            entry["resident_jobseekers"] += count
+            if (sex := sex_keys.get((row.get("Genre") or "").strip())):
+                entry[sex] += count
+        for row in offers:
+            month = _adem_month(row.get("Date"))
+            # "Emploi" is ordinary job offers; employment measures and temp agency posts are separate series.
+            if month in per_month and (row.get("Nature_contrat") or "").strip() == "Emploi":
+                per_month[month]["new_vacancies"] = _number(row.get("Postes_declares"))
+                per_month[month]["open_vacancies"] = _number(row.get("Stock_postes_vacants"))
+        series = sorted(per_month.values(), key=lambda item: item["month"], reverse=True)[:months]
+        if not series:
+            raise UpstreamError("ADEM key figures contained no monthly data")
+        return {"as_of": series[0]["month"], "count": len(series), "months": series,
+                "note": "resident jobseekers available for work and registered at ADEM at month end; vacancies are "
+                        "ordinary job offers declared to ADEM that month (new) and still open at month end",
+                "source": dataset["resource_url"], "dataset": dataset.get("page")}
+
 
 def _alert_is_active(expires: str | None, now: datetime) -> bool:
     if not expires:
@@ -1272,6 +1607,62 @@ def _entsoe_time(value: str | None) -> datetime | None:
         return datetime.strptime((value or "").strip(), "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def _entsoe_points(series: ElementTree.Element, value_tag: str) -> tuple[int, list[tuple[str, int | float]]]:
+    """(resolution in minutes, [(UTC start, value)]) for an ENTSO-E TimeSeries."""
+    period = series.find("{*}Period")
+    if period is None:
+        return 60, []
+    interval = period.find("{*}timeInterval")
+    start = _entsoe_time(interval.findtext("{*}start") if interval is not None else None)
+    minutes = {"PT15M": 15, "PT30M": 30, "PT60M": 60}.get((period.findtext("{*}resolution") or "").strip(), 60)
+    by_position = {}
+    for point in period.findall("{*}Point"):
+        position = _number(point.findtext("{*}position"))
+        value = _number(point.findtext(f"{{*}}{value_tag}"))
+        # A day holds at most 100 quarter hours; the bound keeps a bogus position from looping for ages.
+        if isinstance(position, int) and 1 <= position <= 3000 and value is not None:
+            by_position[position] = value
+    if start is None or not by_position:
+        return minutes, []
+    # curveType A03: a point holds until the next one, so gaps repeat the previous value.
+    points, last = [], None
+    for position in range(1, max(by_position) + 1):
+        last = by_position.get(position, last)
+        if last is None:
+            continue
+        points.append(((start + timedelta(minutes=minutes * (position - 1))).isoformat().replace("+00:00", "Z"), last))
+    return minutes, points
+
+
+def _adem_month(value: str | None) -> str | None:
+    """ADEM dates are month ends like 31-08-2026; the figures are monthly, so keep 2026-08."""
+    match = re.fullmatch(r"\d{2}-(\d{2})-(\d{4})", (value or "").strip())
+    return f"{match.group(2)}-{match.group(1)}" if match else None
+
+
+def _lod_text(parts: Any) -> str:
+    """Flatten LOD example parts (nested word/inflectedHeadword tokens) into a sentence."""
+    words: list[str] = []
+    for part in parts if isinstance(parts, list) else []:
+        if not isinstance(part, dict):
+            continue
+        if isinstance(part.get("content"), str):
+            words.append(part["content"])
+        elif part.get("type") == "text":
+            words.append(_lod_text(part.get("parts")))
+    return " ".join(word for word in words if word)
+
+
+def _lod_translation(language: Any) -> str | None:
+    """'maison (habitation)' from a LOD targetLanguages entry."""
+    parts = language.get("parts") if isinstance(language, dict) else None
+    if not isinstance(parts, list):
+        return None
+    words = "; ".join(p["content"] for p in parts if isinstance(p, dict) and p.get("type") == "translation" and isinstance(p.get("content"), str))
+    hints = ", ".join(p["content"] for p in parts if isinstance(p, dict) and p.get("type") == "semanticClarifier" and isinstance(p.get("content"), str))
+    return (f"{words} ({hints})" if hints else words) or None
 
 
 def _number(value: str | None) -> int | float | None:
