@@ -1,7 +1,7 @@
 # Pinned by digest: wrangler builds on the local Docker daemon, which never
 # re-pulls a cached tag, so a floating tag can silently ship a stale base.
 # Dependabot (docker ecosystem) keeps this digest current.
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
+FROM python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
