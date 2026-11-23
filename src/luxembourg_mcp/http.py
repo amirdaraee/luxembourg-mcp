@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import ipaddress
+import os
+import ssl
+from functools import lru_cache
 from http.client import HTTPException
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 MAX_UPSTREAM_BYTES = 25 * 1024 * 1024
 
@@ -34,6 +37,29 @@ def validate_external_url(url: str, allowed_hosts: set[str] | frozenset[str]) ->
         return
     if not address.is_global:
         raise UpstreamError("Private or non-global upstream addresses are not allowed")
+
+
+# Extra CA to trust on top of the system store. The hosted deployment sets it to the
+# Cloudflare containers CA, because the Worker proxies a few upstreams (see
+# deploy/cloudflare/src/index.js) and re-signs those TLS connections.
+EXTRA_CA_ENV = "LUXEMBOURG_MCP_EXTRA_CA_FILE"
+
+
+@lru_cache(maxsize=1)
+def _tls_context() -> ssl.SSLContext | None:
+    """System trust plus the extra CA, or None (urllib's default) when none is configured."""
+    extra = os.environ.get(EXTRA_CA_ENV)
+    if not extra or not os.path.isfile(extra):
+        return None
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=extra)
+    return context
+
+
+def _opener(allowed_hosts: set[str] | frozenset[str]):
+    context = _tls_context()
+    redirects = _SafeRedirectHandler(allowed_hosts)
+    return build_opener(redirects) if context is None else build_opener(HTTPSHandler(context=context), redirects)
 
 
 class _SafeRedirectHandler(HTTPRedirectHandler):
@@ -70,7 +96,7 @@ class HttpClient:
             headers=request_headers,
         )
         try:
-            opener = build_opener(_SafeRedirectHandler(allowed_hosts))
+            opener = _opener(allowed_hosts)
             with opener.open(request, timeout=20) as response:
                 declared_size = response.headers.get("Content-Length")
                 if declared_size is not None:
@@ -96,7 +122,7 @@ class HttpClient:
         request = Request(url, data=data, headers={"Accept": "application/json, text/csv;q=0.9, application/xml;q=0.8",
                                         "User-Agent": "luxembourg-mcp/0.8 (status check)", **(headers or {})})
         try:
-            with build_opener(_SafeRedirectHandler(allowed_hosts)).open(request, timeout=timeout) as response:
+            with _opener(allowed_hosts).open(request, timeout=timeout) as response:
                 response.read(read_bytes)
                 return response.status
         except HTTPError as exc:

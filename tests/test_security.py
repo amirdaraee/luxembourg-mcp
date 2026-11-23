@@ -1,6 +1,7 @@
 import http.client
 import io
 import json
+import os
 import socket
 import threading
 import time
@@ -77,6 +78,26 @@ class SecurityTests(unittest.TestCase):
         with patch("luxembourg_mcp.http.build_opener", return_value=FakeOpener(response)):
             with self.assertRaisesRegex(UpstreamError, "exceeds 8 bytes"):
                 HttpClient().get_bytes("https://example.test/data", max_bytes=8)
+
+    def test_extra_ca_is_added_to_system_trust_only_when_configured(self):
+        import ssl
+        import tempfile
+        from luxembourg_mcp import http as http_module
+
+        self.addCleanup(http_module._tls_context.cache_clear)
+        http_module._tls_context.cache_clear()
+        with patch.dict("os.environ", {"LUXEMBOURG_MCP_EXTRA_CA_FILE": "/nonexistent/ca.crt"}):
+            self.assertIsNone(http_module._tls_context())
+        http_module._tls_context.cache_clear()
+        default = ssl.create_default_context()
+        with tempfile.NamedTemporaryFile("w", suffix=".crt", delete=False) as ca:
+            self.addCleanup(os.unlink, ca.name)
+        with patch.dict("os.environ", {"LUXEMBOURG_MCP_EXTRA_CA_FILE": ca.name}), \
+                patch("ssl.SSLContext.load_verify_locations") as load:
+            context = http_module._tls_context()
+        load.assert_called_once_with(cafile=ca.name)
+        self.assertEqual(context.verify_mode, default.verify_mode)
+        self.assertTrue(context.check_hostname)
 
     def test_hardcoded_urls_only_follow_same_host_https_redirects(self):
         handlers = []

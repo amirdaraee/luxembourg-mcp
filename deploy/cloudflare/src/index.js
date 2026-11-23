@@ -1,4 +1,12 @@
-import { Container } from "@cloudflare/containers";
+import { Container, ContainerProxy } from "@cloudflare/containers";
+
+// The containers runtime calls this entrypoint for intercepted outbound requests.
+export { ContainerProxy };
+
+// Upstreams whose firewalls refuse the container's egress addresses but accept
+// Worker fetches. Only these hosts are intercepted; everything else goes out
+// directly. TED (api.ted.europa.eu, behind AWS WAF) answers 403 to containers.
+const VIA_WORKER = ["api.ted.europa.eu"];
 
 export class LuxembourgMcp extends Container {
   defaultPort = 8000;
@@ -7,10 +15,14 @@ export class LuxembourgMcp extends Container {
   // the hosted deployment runs the HTTP transport instead.
   entrypoint = ["luxembourg-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"];
   enableInternet = true; // the server fetches Luxembourg's public upstream APIs
+  interceptHttps = true; // applies only to the hosts in outboundByHost
+  static outboundByHost = Object.fromEntries(VIA_WORKER.map((host) => [host, (request) => fetch(request)]));
   envVars = {
     LUXEMBOURG_MCP_ALLOWED_ORIGINS: "*",
     LUXEMBOURG_MCP_CLIENT_IP_HEADER: "CF-Connecting-IP",
     LUXEMBOURG_MCP_RATE_LIMIT: "60",
+    // Intercepted HTTPS is re-signed by this CA, mounted by the containers runtime.
+    LUXEMBOURG_MCP_EXTRA_CA_FILE: "/etc/cloudflare/certs/cloudflare-containers-ca.crt",
   };
 }
 
