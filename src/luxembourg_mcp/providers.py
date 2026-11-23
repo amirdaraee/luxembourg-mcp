@@ -62,7 +62,17 @@ FLEX_SLUG = "flex-carsharing-by-cfl-1"
 METEOLUX_FORECAST = "https://metapi.ana.lu/api/v1/metapp/weather"
 PHARMACY_ON_DUTY = "https://pharmacie.lu/feed-garde-csv"
 VELOK_STATIONS = "https://www.velok.lu/api-proxy.php"
-PMP_TENDERS = "https://pmp.b2g.etat.lu/api/v2/consultations"
+# The national portal's API (pmp.b2g.etat.lu/api/v2) went behind a login in November 2026,
+# so tenders come from TED, the EU's official journal, which every Luxembourg notice above
+# the EU thresholds (and many below) is published in.
+TED_SEARCH = "https://api.ted.europa.eu/v3/notices/search"
+TED_NOTICE = "https://ted.europa.eu/en/notice/-/detail/{}"
+TED_CALL_FOR_TENDER_TYPES = "cn-standard cn-social cn-desg pin-cfc-standard pin-cfc-social"
+TED_TENDER_FIELDS = ["publication-number", "title-proc", "buyer-name", "procedure-type", "contract-nature",
+                     "publication-date", "deadline-receipt-tender-date-lot", "classification-cpv",
+                     "estimated-value-proc", "estimated-value-cur-proc"]
+TENDER_COVERAGE = ("Calls for tender from Luxembourg buyers published in TED (EU Official Journal): all notices above "
+                   "EU thresholds plus voluntary ones. Smaller national-only tenders are listed on pmp.b2g.etat.lu.")
 VOTES_SLUG = "liste-des-votes-en-seances-plenieres"
 DEPUTIES_SLUG = "liste-des-deputes-actifs"
 # Lëtzebuerger Online Dictionnaire: the OpenAPI doc omits query parameters; search needs query and lang.
@@ -1223,32 +1233,21 @@ class LuxembourgData:
 
     def search_tenders(self, query: str | None = None, limit: int = 10, open_only: bool = True) -> dict:
         limit = min(max(limit, 1), 50)
-        params: list[tuple[str, Any]] = [("itemsPerPage", limit), ("page", 1)]
+        clauses = ["buyer-country=LUX", f"notice-type IN ({TED_CALL_FOR_TENDER_TYPES})"]
         if open_only:
-            params.append(("statutCalcule", 2))
-        if query:
-            if not query.strip():
+            clauses.append("deadline-receipt-tender-date-lot>=today()")
+        if query is not None:
+            # Keep the text a single quoted phrase so it can't add operators to TED's expert query.
+            text = re.sub(r'[\\"()~]+', " ", query).strip()
+            if not text:
                 raise ValueError("query must not be empty")
-            params.append(("search_full[]", query))
-        url = f"{PMP_TENDERS}?{urlencode(params)}"
-        # The API serves its HTML docs page unless JSON-LD is requested explicitly.
-        data = self.http.get_json(url, headers={"Accept": "application/ld+json"})
-        notices = []
-        for item in data.get("hydra:member", []):
-            notices.append({
-                "reference": item.get("reference"),
-                "title": item.get("intitule"),
-                "buyer": item.get("directionServiceLibelle") or item.get("organismeDenomination"),
-                "procedure": item.get("typeProcedureLibelle"),
-                "nature": item.get("naturePrestationLibelle"),
-                "published": item.get("dateMiseEnLigneCalcule"),
-                "deadline": item.get("dateLimiteRemiseOffres"),
-                "cpv_code": item.get("codeCpvPrincipal"),
-                "estimated_value_eur": item.get("valeurEstimee") or None,
-                "url": item.get("urlConsultation"),
-            })
-        return {"total": data.get("hydra:totalItems", len(notices)), "count": len(notices),
-                "open_only": open_only, "tenders": notices, "source": url}
+            clauses.append(f'FT~("{text}")')
+        body = {"query": " AND ".join(clauses) + " SORT BY publication-date DESC",
+                "fields": TED_TENDER_FIELDS, "limit": limit, "page": 1}
+        data = self.http.post_json(TED_SEARCH, body)
+        notices = [_ted_tender(item) for item in data.get("notices", []) if isinstance(item, dict)]
+        return {"total": data.get("totalNoticeCount", len(notices)), "count": len(notices),
+                "open_only": open_only, "tenders": notices, "coverage": TENDER_COVERAGE, "source": TED_SEARCH}
 
     def _plenary_votes(self, url: str) -> list[dict]:
         def load() -> list[dict]:
@@ -1700,3 +1699,39 @@ def _read_bounded_zip_member(archive: zipfile.ZipFile, name: str) -> bytes:
     if len(payload) > MAX_GTFS_MEMBER_BYTES:
         raise UpstreamError(f"ZIP member {name} exceeds {MAX_GTFS_MEMBER_BYTES} bytes")
     return payload
+
+
+def _ted_text(value: Any) -> str | None:
+    """First text of a TED multilingual field, preferring French, German, then English."""
+    if isinstance(value, list):
+        return next((t for t in (_ted_text(v) for v in value) if t), None)
+    if isinstance(value, dict):
+        for lang in ("fra", "deu", "eng", *value):
+            text = _ted_text(value.get(lang))
+            if text:
+                return text
+        return None
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _ted_first(value: Any) -> Any:
+    return value[0] if isinstance(value, list) and value else (None if isinstance(value, list) else value)
+
+
+def _ted_tender(item: dict) -> dict:
+    number = item.get("publication-number")
+    deadlines = sorted(d for d in item.get("deadline-receipt-tender-date-lot") or [] if isinstance(d, str))
+    value = _ted_first(item.get("estimated-value-proc"))
+    currency = _ted_first(item.get("estimated-value-cur-proc"))
+    return {
+        "reference": number,
+        "title": _ted_text(item.get("title-proc")),
+        "buyer": _ted_text(item.get("buyer-name")),
+        "procedure": item.get("procedure-type"),
+        "nature": _ted_first(item.get("contract-nature")),
+        "published": item.get("publication-date"),
+        "deadline": deadlines[0] if deadlines else None,
+        "cpv_code": _ted_first(item.get("classification-cpv")),
+        "estimated_value_eur": value if currency == "EUR" and isinstance(value, (int, float)) and value > 0 else None,
+        "url": TED_NOTICE.format(number) if number else None,
+    }

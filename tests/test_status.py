@@ -26,9 +26,9 @@ class ProbeHttp:
         self.failing = dict(failing or {})
         self.urls = []
         self._lock = threading.Lock()
-        self._by_url = {url: key for key, (_, url, _) in UPSTREAMS.items()}
+        self._by_url = {url: key for key, (_, url, *_) in UPSTREAMS.items()}
 
-    def probe(self, url, headers=None, *, timeout=10, read_bytes=4096):
+    def probe(self, url, headers=None, *, timeout=10, read_bytes=4096, data=None):
         with self._lock:
             self.urls.append(url)
         error = self.failing.get(self._by_url[url])
@@ -56,7 +56,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(used, set(UPSTREAMS))
 
     def test_probe_urls_are_https_and_never_hit_the_download_host_for_files(self):
-        for key, (name, url, headers) in UPSTREAMS.items():
+        for key, (name, url, headers, *_) in UPSTREAMS.items():
             with self.subTest(upstream=key):
                 parsed = urlsplit(url)
                 self.assertEqual(parsed.scheme, "https")
@@ -78,7 +78,7 @@ class MonitorTests(unittest.TestCase):
     def test_first_snapshot_probes_every_upstream_once(self):
         http = ProbeHttp()
         snapshot = StatusMonitor(http).snapshot()
-        self.assertEqual(sorted(http.urls), sorted(url for _, url, _ in UPSTREAMS.values()))
+        self.assertEqual(sorted(http.urls), sorted(url for _, url, *_ in UPSTREAMS.values()))
         self.assertEqual(snapshot["summary"], {"ok": len(TOOL_UPSTREAMS), "unknown": 0, "degraded": 0, "down": 0})
         self.assertEqual(snapshot["tools"]["get_traffic_events"], {"status": "ok", "upstreams": ["cita_events"]})
         self.assertTrue(snapshot["checked_at"].endswith("Z"))

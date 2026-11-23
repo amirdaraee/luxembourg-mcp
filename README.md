@@ -66,7 +66,7 @@ Luxembourg MCP applies that idea to the Grand Duchy. It is an independent implem
 | `get_electricity_prices` | Open Data Lëtzebuerg | Day-ahead power prices per quarter hour |
 | `get_carsharing` | CFL Mobility | Available FLEX carsharing vehicles |
 | `get_bike_sharing` | Vël'OK | Live bike-sharing availability in the south |
-| `search_tenders` | Portail des marchés publics | Open public procurement notices |
+| `search_tenders` | TED (EU Official Journal) | Open calls for tender from Luxembourg public buyers |
 | `get_plenary_votes` | Chamber of Deputies | Plenary votes with tallies per party and per deputy |
 | `get_deputies` | Chamber of Deputies | Current deputies, party, constituency and email |
 | `lookup_luxembourgish` | Lëtzebuerger Online Dictionnaire | Translations, pronunciation and examples |
