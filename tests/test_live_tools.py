@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 
 from luxembourg_mcp.server import McpServer
@@ -14,17 +15,30 @@ class EveryToolLiveTests(unittest.TestCase):
         cls.server = McpServer()
         cls.request_id = 0
 
+    # data.public.lu often times out or refuses connections from CI runners.
+    # Retry those, then skip: an unreachable host says nothing about our code.
+    # Any other upstream error (bad payload, HTTP status, host change) still fails.
+    UNREACHABLE = "Could not reach upstream "
+    RETRY_DELAYS = (15, 45)
+
     def call(self, name, arguments=None):
-        type(self).request_id += 1
-        response = self.server.handle({
-            "jsonrpc": "2.0",
-            "id": self.request_id,
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments or {}},
-        })
-        self.assertNotIn("error", response)
-        result = response["result"]
-        self.assertFalse(result["isError"], result["content"][0]["text"])
+        for delay in (*self.RETRY_DELAYS, None):
+            type(self).request_id += 1
+            response = self.server.handle({
+                "jsonrpc": "2.0",
+                "id": self.request_id,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments or {}},
+            })
+            self.assertNotIn("error", response)
+            result = response["result"]
+            text = result["content"][0]["text"] if result["isError"] else ""
+            if not text.startswith(self.UNREACHABLE):
+                break
+            if delay is None:
+                self.skipTest(f"upstream unreachable after retries: {text}")
+            time.sleep(delay)
+        self.assertFalse(result["isError"], text)
         data = result.get("structuredContent")
         self.assertIsInstance(data, dict)
         self.assertTrue(str(data.get("source", "")).startswith("https://"))
