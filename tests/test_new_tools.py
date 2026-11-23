@@ -30,6 +30,10 @@ class ScriptedHttp:
         value = self._next(url, headers)
         return value, "utf-8"
 
+    def post_json(self, url, body, **kwargs):
+        self.bodies = [*getattr(self, "bodies", []), body]
+        return self._next(url, None)
+
 
 def dataset(slug, resources):
     return {
@@ -287,35 +291,52 @@ class SharedMobilityTests(unittest.TestCase):
 
 class TenderTests(unittest.TestCase):
     payload = {
-        "hydra:totalItems": 773,
-        "hydra:member": [{
-            "id": 532194, "reference": "2402754", "intitule": "Access to databases",
-            "organismeDenomination": "Portail des marchés publics", "directionServiceLibelle": "Administration des Marchés Publics",
-            "typeProcedureLibelle": "13 européenne", "naturePrestationLibelle": "Fournitures",
-            "dateMiseEnLigneCalcule": "2024-12-11T11:33:01+01:00", "dateLimiteRemiseOffres": "2026-12-09T16:30:00+01:00",
-            "codeCpvPrincipal": "48611000", "valeurEstimee": 0, "urlConsultation": "https://pmp.b2g.etat.lu/entreprise/consultation/532194",
+        "totalNoticeCount": 190,
+        "notices": [{
+            "publication-number": "811983-2026",
+            "title-proc": {"fra": "Travaux de peinture"},
+            "buyer-name": {"fra": ["Fonds du Logement"]},
+            "procedure-type": "open",
+            "contract-nature": ["works", "works"],
+            "publication-date": "2026-11-23+01:00",
+            "deadline-receipt-tender-date-lot": ["2027-01-20+01:00", "2027-01-12+01:00"],
+            "classification-cpv": ["45442100", "45442100"],
         }],
     }
 
-    def test_requests_json_ld_and_shapes_notices(self):
+    def test_queries_ted_for_open_luxembourg_calls_and_shapes_notices(self):
         http = ScriptedHttp([self.payload])
-        result = LuxembourgData(http).search_tenders(query="database", limit=5)
-        url, headers = http.calls[0]
-        self.assertEqual(headers, {"Accept": "application/ld+json"})
-        self.assertIn("statutCalcule=2", url)
-        self.assertIn("itemsPerPage=5", url)
-        self.assertIn("search_full", url)
+        result = LuxembourgData(http).search_tenders(query="peinture", limit=5)
+        url, _ = http.calls[0]
+        body = http.bodies[0]
+        self.assertEqual(url, "https://api.ted.europa.eu/v3/notices/search")
+        self.assertEqual(body["limit"], 5)
+        self.assertIn("buyer-country=LUX", body["query"])
+        self.assertIn("deadline-receipt-tender-date-lot>=today()", body["query"])
+        self.assertIn('FT~("peinture")', body["query"])
         notice = result["tenders"][0]
-        self.assertEqual((result["total"], result["count"]), (773, 1))
-        self.assertEqual(notice["buyer"], "Administration des Marchés Publics")
-        self.assertEqual(notice["cpv_code"], "48611000")
+        self.assertEqual((result["total"], result["count"]), (190, 1))
+        self.assertEqual(notice["title"], "Travaux de peinture")
+        self.assertEqual(notice["buyer"], "Fonds du Logement")
+        self.assertEqual(notice["nature"], "works")
+        self.assertEqual(notice["deadline"], "2027-01-12+01:00")
+        self.assertEqual(notice["cpv_code"], "45442100")
         self.assertIsNone(notice["estimated_value_eur"])
+        self.assertEqual(notice["url"], "https://ted.europa.eu/en/notice/-/detail/811983-2026")
 
     def test_open_only_can_be_disabled(self):
         http = ScriptedHttp([self.payload])
         LuxembourgData(http).search_tenders(open_only=False)
-        self.assertNotIn("statutCalcule", http.calls[0][0])
+        self.assertNotIn("today()", http.bodies[0]["query"])
 
+    def test_query_cannot_inject_ted_operators(self):
+        http = ScriptedHttp([self.payload])
+        LuxembourgData(http).search_tenders(query='x") OR buyer-country=FRA OR FT~("y')
+        query = http.bodies[0]["query"]
+        self.assertEqual(query.count('"'), 2)
+        self.assertNotIn("(y", query)
+        with self.assertRaises(ValueError):
+            LuxembourgData(ScriptedHttp([])).search_tenders(query='"()"')
 
 if __name__ == "__main__":
     unittest.main()

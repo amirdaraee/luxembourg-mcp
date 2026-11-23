@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -49,7 +51,8 @@ UPSTREAMS: dict[str, tuple[str, str, dict[str, str] | None]] = {
     "meteolux_forecast": ("MeteoLux forecast API", f"{p.METEOLUX_FORECAST}?{urlencode({'lat': 49.6116, 'long': 6.1319, 'langcode': 'en'})}", None),
     "pharmacies": ("Pharmacie.lu on-duty feed", p.PHARMACY_ON_DUTY, {"Accept": "text/csv"}),
     "velok": ("Vël'OK stations", p.VELOK_STATIONS, {"Accept": "application/xml"}),
-    "tenders": ("Public procurement portal", f"{p.PMP_TENDERS}?itemsPerPage=1&page=1", {"Accept": "application/ld+json"}),
+    "tenders": ("TED (EU Official Journal) tenders", p.TED_SEARCH, {"Content-Type": "application/json"},
+                json.dumps({"query": "buyer-country=LUX", "fields": ["publication-number"], "limit": 1}).encode()),
     "lod": ("Lëtzebuerger Online Dictionnaire", f"{p.LOD_API}/en/word-of-the-day", None),
 }
 for _slug in (p.WEATHER_ALERTS_SLUG, p.AIR_DATASET, p.CHAMBER_BODIES_DATASET, p.GTFS_DATASET, p.WEATHER_OBS_SLUG,
@@ -136,10 +139,10 @@ class StatusMonitor:
         self._first_round = threading.Event()
 
     def _probe(self, key: str) -> tuple[str, float, str | None]:
-        _, url, headers = UPSTREAMS[key]
+        _, url, headers, *body = UPSTREAMS[key]
         started = time.monotonic()
         try:
-            self.http.probe(url, headers, timeout=PROBE_TIMEOUT_SECONDS)
+            self.http.probe(url, headers, timeout=PROBE_TIMEOUT_SECONDS, data=body[0] if body else None)
             return key, time.monotonic() - started, None
         except UpstreamError as exc:
             return key, time.monotonic() - started, str(exc)[:200]
